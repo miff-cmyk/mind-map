@@ -9,7 +9,7 @@ export const CATEGORY_COL_WIDTH  = 72
 export const DATE_COL_WIDTH      = 55
 export const DATE_COL_EDIT_WIDTH = 130
 export const PROGRESS_COL_WIDTH  = 68
-export const LIST_CELL_WIDTH     = 420
+export const LIST_CELL_WIDTH     = 600
 
 const INDENT_SIZE  = 16
 const BASE_PADDING = 4
