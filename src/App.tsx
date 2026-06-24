@@ -13,6 +13,7 @@ export default function App() {
   const exportData = useTaskStore(s => s.exportData)
   const importData = useTaskStore(s => s.importData)
   const addTask = useTaskStore(s => s.addTask)
+  const deleteTask = useTaskStore(s => s.deleteTask)
   const tasks = useTaskStore(s => s.tasks)
   const selectedTaskId = useTaskStore(s => s.selectedTaskId)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -34,10 +35,13 @@ export default function App() {
 
       if (e.key === 'Enter') {
         e.preventDefault()
-        addTask(selectedTask.parentId)  // 同じ階層に追加
+        addTask(selectedTask.parentId)
       } else if (e.key === 'Tab') {
         e.preventDefault()
-        addTask(selectedTaskId)          // 子として追加
+        addTask(selectedTaskId)
+      } else if (e.key === 'Delete') {
+        e.preventDefault()
+        deleteTask(selectedTaskId)
       }
     }
     window.addEventListener('keydown', handleKeyDown)

@@ -126,7 +126,7 @@ export function GanttTaskList({
       {tasks.map(task => {
         const depth       = getDepth(task.id, tasks)
         const isLast      = lastSiblingIds.has(task.id)
-        const isProject   = task.type === 'project'
+        const isProject   = tasks.some(t => t.project === task.id)
         const isSelected  = task.id === selectedTaskId
         const isCollapsed = ganttCollapsedIds.includes(task.id)
         const connector   = depth === 0 ? null : isLast ? '└' : '├'

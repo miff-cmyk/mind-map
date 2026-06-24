@@ -43,8 +43,7 @@ function bfsSorted(tasks: Task[]): Task[] {
   return result
 }
 
-function toGanttTask(task: Task, allTasks: Task[]): GanttTask {
-  const hasChildren = allTasks.some(t => t.parentId === task.id)
+function toGanttTask(task: Task): GanttTask {
   const hex = colorToHex(task.color)
   const start = new Date(task.start)
   const end = new Date(task.end)
@@ -56,7 +55,7 @@ function toGanttTask(task: Task, allTasks: Task[]): GanttTask {
     start,
     end,
     progress: task.progress,
-    type: hasChildren ? 'project' : 'task',
+    type: 'task',
     project: task.parentId ?? undefined,
     displayOrder: task.order,
     styles: {
@@ -131,7 +130,7 @@ export default function GanttView() {
   const selectTask       = useTaskStore(s => s.selectTask)
   const updateTask       = useTaskStore(s => s.updateTask)
 
-  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Week)
+  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   // viewMode に応じた列幅・ヘッダー高さ
@@ -140,7 +139,7 @@ export default function GanttView() {
 
   const visibleGanttTasks = useMemo(() => {
     const sorted     = bfsSorted(tasks)
-    const ganttTasks = sorted.map(t => toGanttTask(t, tasks))
+    const ganttTasks = sorted.map(t => toGanttTask(t))
     return filterByCollapsed(ganttTasks, ganttCollapsedIds)
   }, [tasks, ganttCollapsedIds])
 
@@ -321,6 +320,7 @@ export default function GanttView() {
             onProgressChange={task => {
               updateTask(task.id, { progress: Math.round(task.progress) })
             }}
+            rowHeight={28}
             listCellWidth={`${LIST_CELL_WIDTH}px`}
             columnWidth={colWidth}
             TaskListTable={GanttTaskList}
