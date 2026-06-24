@@ -12,11 +12,14 @@ export default function App() {
   const isLoaded = useTaskStore(s => s.isLoaded)
   const exportData = useTaskStore(s => s.exportData)
   const importData = useTaskStore(s => s.importData)
+  const exportCSV  = useTaskStore(s => s.exportCSV)
+  const importCSV  = useTaskStore(s => s.importCSV)
   const addTask = useTaskStore(s => s.addTask)
   const deleteTask = useTaskStore(s => s.deleteTask)
   const tasks = useTaskStore(s => s.tasks)
   const selectedTaskId = useTaskStore(s => s.selectedTaskId)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef    = useRef<HTMLInputElement>(null)
+  const csvInputRef     = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadFromStorage()
@@ -48,18 +51,28 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedTaskId, tasks, addTask])
 
-  const handleImportClick = () => fileInputRef.current?.click()
+  const handleImportClick    = () => fileInputRef.current?.click()
+  const handleCSVImportClick = () => csvInputRef.current?.click()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
     reader.onload = ev => {
-      if (typeof ev.target?.result === 'string') {
-        importData(ev.target.result)
-      }
+      if (typeof ev.target?.result === 'string') importData(ev.target.result)
     }
     reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleCSVFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      if (typeof ev.target?.result === 'string') importCSV(ev.target.result)
+    }
+    reader.readAsText(file, 'utf-8')
     e.target.value = ''
   }
 
@@ -111,18 +124,18 @@ export default function App() {
           </button>
         )}
 
-        {/* 書き出し / 読み込み */}
+        {/* JSON 書き出し / 読み込み */}
         <button
           onClick={exportData}
           className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
         >
-          書き出し
+          JSON書き出し
         </button>
         <button
           onClick={handleImportClick}
           className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
         >
-          読み込み
+          JSON読み込み
         </button>
         <input
           ref={fileInputRef}
@@ -130,6 +143,27 @@ export default function App() {
           accept=".json"
           className="hidden"
           onChange={handleFileChange}
+        />
+
+        {/* CSV 書き出し / 読み込み */}
+        <button
+          onClick={exportCSV}
+          className="px-3 py-1.5 text-sm text-green-700 border border-green-400 rounded hover:bg-green-50 transition-colors"
+        >
+          CSV書き出し
+        </button>
+        <button
+          onClick={handleCSVImportClick}
+          className="px-3 py-1.5 text-sm text-green-700 border border-green-400 rounded hover:bg-green-50 transition-colors"
+        >
+          CSV読み込み
+        </button>
+        <input
+          ref={csvInputRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={handleCSVFileChange}
         />
       </header>
 

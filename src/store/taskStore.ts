@@ -37,6 +37,8 @@ interface TaskStore {
   deleteTask(id: string): void
   exportData(): void
   importData(json: string): void
+  exportCSV(): void
+  importCSV(csv: string): void
   toggleCollapse(id: string): void
   toggleGanttCollapse(id: string): void
 }
@@ -107,6 +109,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       IndexedDBStorage.save(tasks)
     } catch (e) {
       alert(e instanceof Error ? e.message : 'インポートに失敗しました')
+    }
+  },
+
+  exportCSV() {
+    IndexedDBStorage.exportCSV(get().tasks)
+  },
+
+  importCSV(csv) {
+    try {
+      const tasks = IndexedDBStorage.importCSV(csv)
+      set({ tasks, selectedTaskId: null, collapsedIds: [] })
+      IndexedDBStorage.save(tasks)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'CSVインポートに失敗しました')
     }
   },
 
