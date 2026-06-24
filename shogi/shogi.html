@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>将棋</title>
+  <style>
+* { box-sizing: border-box; }
+
+:root {
+  /* 盤マスの一辺。画面が狭いほど自動で縮む（最大44px）。
+     盤9マス＋左右の余白を引いて画面幅に収める。 */
+  --cell: min(44px, calc((100vw - 24px) / 9));
+}
+
+html { -webkit-text-size-adjust: 100%; } /* スマホで文字が勝手に拡大されるのを防ぐ */
+
+body {
+  font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  background: #f3ede2;
+  color: #2b2b2b;
+  margin: 0;
+  padding: 12px;
+  -webkit-tap-highlight-color: transparent; /* タップ時の青いハイライトを消す */
+}
+
+h1 { font-size: 20px; margin: 0 0 12px; }
+
+.layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.controls label { font-size: 14px; }
+.controls select, .controls button {
+  font-size: 16px;            /* 16px未満だと iOS で入力時に画面が拡大する */
+  padding: 8px 12px;          /* タップしやすいサイズに */
+  border-radius: 6px;
+  border: 1px solid #b9a98c;
+  background: #fff;
+  cursor: pointer;
+}
+.controls button { background: #8b5e34; color: #fff; border: none; }
+.controls button:hover { background: #74471f; }
+
+.status {
+  font-size: 16px;
+  font-weight: bold;
+  margin: 8px 0;
+  min-height: 22px;
+}
+.status.over { color: #b00020; }
+
+/* 盤と持ち駒 */
+.board-area { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+.hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: calc(var(--cell) * 0.95);
+  width: calc(var(--cell) * 9);   /* 盤と同じ幅 */
+  padding: 4px;
+  background: #e8dcc4;
+  border-radius: 6px;
+}
+.hand-label { font-size: 12px; color: #6a5a3c; width: 100%; }
+
+.hand-piece {
+  width: calc(var(--cell) * 0.8);
+  height: calc(var(--cell) * 0.88);
+  display: flex; align-items: center; justify-content: center;
+  background: #f6e3b8;
+  border: 1px solid #caa86a;
+  border-radius: 4px;
+  font-size: calc(var(--cell) * 0.42);
+  font-weight: bold;
+  cursor: pointer; user-select: none;
+}
+.hand-piece.gote { transform: rotate(180deg); }
+.hand-piece.selected { outline: 3px solid #2e7d32; }
+
+#board {
+  display: grid;
+  grid-template-columns: repeat(9, var(--cell));
+  grid-template-rows: repeat(9, var(--cell));
+  background: #d9b271;
+  border: 3px solid #6b4a1e;
+  width: max-content;
+  touch-action: manipulation;     /* ダブルタップによるズームを抑制 */
+}
+
+.cell {
+  border: 1px solid #8a6a39;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+.cell .piece {
+  font-size: calc(var(--cell) * 0.55);
+  font-weight: bold; line-height: 1;
+  user-select: none;
+}
+.cell .piece.gote { transform: rotate(180deg); color: #1a1a1a; }
+.cell .piece.promoted { color: #b00020; }
+.cell.selected { background: rgba(46,125,50,.35); }
+.cell.target::after {
+  content: "";
+  position: absolute;
+  width: calc(var(--cell) * 0.32);
+  height: calc(var(--cell) * 0.32);
+  border-radius: 50%;
+  background: rgba(46,125,50,.55);
+}
+.cell.target:hover { background: rgba(46,125,50,.25); }
+
+/* 棋譜 */
+.sidebar { width: 200px; }
+#log {
+  height: 420px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #caa86a;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* スマホなど狭い画面：棋譜を盤の下にまわし、横幅いっぱいに */
+@media (max-width: 620px) {
+  body { padding: 8px; }
+  h1 { font-size: 18px; }
+  .layout { gap: 12px; }
+  .sidebar { width: calc(var(--cell) * 9); }
+  #log { height: 140px; }
+}
+
+  </style>
+</head>
+<body>
+  <h1>将棋</h1>
+
+  <div class="controls">
+    <label>難易度：
+      <select id="difficulty">
+        <option value="weak">弱い</option>
+        <option value="normal" selected>普通</option>
+        <option value="strong">強い</option>
+      </select>
+    </label>
+    <label>手番：
+      <select id="side">
+        <option value="sente" selected>先手（下）</option>
+        <option value="gote">後手（上）</option>
+      </select>
+    </label>
+    <button id="newgame">対局開始</button>
+    <button id="resign">投了</button>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div class="layout">
+    <div class="board-area">
+      <div class="hand" id="hand-gote"><span class="hand-label">後手 持ち駒</span></div>
+      <div id="board"></div>
+      <div class="hand" id="hand-sente"><span class="hand-label">先手 持ち駒</span></div>
+    </div>
+
+    <div class="sidebar">
+      <div style="font-size:13px;margin-bottom:4px;">棋譜</div>
+      <div id="log"></div>
+    </div>
+  </div>
+  <script>
+/* ===== board.js ===== */
+"use strict";
+/* ===== board.js =====
+ * 盤面データモデルと基本ヘルパー。
+ * 駒: { t, o, pr }
+ *   t  … 種類 'P'歩 'L'香 'N'桂 'S'銀 'G'金 'B'角 'R'飛 'K'玉（常に基本種、成りは pr で表現）
+ *   o  … 陣営 SENTE(0,下) / GOTE(1,上)
+ *   pr … 成りフラグ
+ * 盤: board[row][col]  row0..8（row0=上=後手側, row8=下=先手側）, col0..8
+ */
+
+const SENTE = 0; // 先手（盤の下）
+const GOTE  = 1; // 後手（盤の上）
+
+const PROMOTABLE = ["P", "L", "N", "S", "B", "R"]; // 成れる駒種
+const PTYPES = ["P", "L", "N", "S", "G", "B", "R", "K"]; // 全駒種
+const TYPE_INDEX = { P: 0, L: 1, N: 2, S: 3, G: 4, B: 5, R: 6, K: 7 };
+const HAND_KINDS = ["P", "L", "N", "S", "G", "B", "R"];
+const HAND_IDX = { P: 0, L: 1, N: 2, S: 3, G: 4, B: 5, R: 6 };
+
+function makePiece(t, o, pr) {
+  return { t: t, o: o, pr: !!pr };
+}
+
+function emptyHand() {
+  return { P: 0, L: 0, N: 0, S: 0, G: 0, B: 0, R: 0 };
+}
+
+function inBoard(r, c) {
+  return r >= 0 && r < 9 && c >= 0 && c < 9;
+}
+
+/* ---- Zobrist ハッシュ ----
+ * Z_PIECE[owner][promo(0/1)][typeIndex(0..7)][square(0..80)]
+ * Z_HAND[owner][handIndex(0..6)][count(0..18)]
+ * Z_TURN は後手番のときに XOR する。
+ * 32bit 符号なし整数として扱う（XOR のみ使用するので衝突確率は実用上十分低い）。 */
+let Z_PIECE = null, Z_HAND = null, Z_TURN = 0;
+
+function rand32() {
+  // 決定的な乱数（再現性のため固定シードの xorshift）
+  rand32._s = (rand32._s ^ (rand32._s << 13)) >>> 0;
+  rand32._s = (rand32._s ^ (rand32._s >>> 17)) >>> 0;
+  rand32._s = (rand32._s ^ (rand32._s << 5)) >>> 0;
+  return rand32._s >>> 0;
+}
+rand32._s = 0x9e3779b9;
+
+function initZobrist() {
+  if (Z_PIECE) return;
+  rand32._s = 0x9e3779b9;
+  Z_PIECE = [];
+  for (let o = 0; o < 2; o++) {
+    Z_PIECE[o] = [];
+    for (let pr = 0; pr < 2; pr++) {
+      Z_PIECE[o][pr] = [];
+      for (let t = 0; t < 8; t++) {
+        Z_PIECE[o][pr][t] = [];
+        for (let sq = 0; sq < 81; sq++) Z_PIECE[o][pr][t][sq] = rand32();
+      }
+    }
+  }
+  Z_HAND = [];
+  for (let o = 0; o < 2; o++) {
+    Z_HAND[o] = [];
+    for (let h = 0; h < 7; h++) {
+      Z_HAND[o][h] = [];
+      for (let n = 0; n < 19; n++) Z_HAND[o][h][n] = rand32();
+    }
+  }
+  Z_TURN = rand32();
+}
+
+/* 局面のハッシュを全走査で計算（make/unmake は差分更新する） */
+function computeHash(state) {
+  initZobrist();
+  let h = 0;
+  const b = state.board;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      if (!p) continue;
+      h ^= Z_PIECE[p.o][p.pr ? 1 : 0][TYPE_INDEX[p.t]][r * 9 + c];
+    }
+  for (let o = 0; o < 2; o++)
+    for (let hi = 0; hi < 7; hi++) {
+      const cnt = state.hands[o][HAND_KINDS[hi]];
+      h ^= Z_HAND[o][hi][cnt];
+    }
+  if (state.turn === GOTE) h ^= Z_TURN;
+  return h >>> 0;
+}
+
+function initialBoard() {
+  const b = Array.from({ length: 9 }, () => Array(9).fill(null));
+  const back = ["L", "N", "S", "G", "K", "G", "S", "N", "L"];
+
+  // 後手（上）
+  for (let c = 0; c < 9; c++) b[0][c] = makePiece(back[c], GOTE);
+  b[1][1] = makePiece("R", GOTE);
+  b[1][7] = makePiece("B", GOTE);
+  for (let c = 0; c < 9; c++) b[2][c] = makePiece("P", GOTE);
+
+  // 先手（下）
+  for (let c = 0; c < 9; c++) b[6][c] = makePiece("P", SENTE);
+  b[7][1] = makePiece("B", SENTE);
+  b[7][7] = makePiece("R", SENTE);
+  for (let c = 0; c < 9; c++) b[8][c] = makePiece(back[c], SENTE);
+
+  return b;
+}
+
+function newState() {
+  initZobrist();
+  const state = {
+    board: initialBoard(),
+    hands: [emptyHand(), emptyHand()], // hands[SENTE], hands[GOTE]
+    turn: SENTE,
+    hash: 0,
+    history: [],   // 局面キーの履歴（千日手判定）
+    moveLog: [],   // 棋譜（表示用）
+    result: null,  // null or {type, winner?}
+  };
+  state.hash = computeHash(state);
+  state.history.push(positionKey(state));
+  return state;
+}
+
+/* 局面の一意キー（盤＋持ち駒＋手番）。千日手判定に使用 */
+function positionKey(state) {
+  let s = "";
+  const b = state.board;
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      s += p ? (p.o === SENTE ? "+" : "-") + p.t + (p.pr ? "*" : "") : ".";
+    }
+  }
+  s += "|";
+  for (const side of [SENTE, GOTE]) {
+    const h = state.hands[side];
+    s += side + ":" + HAND_KINDS.map((k) => h[k]).join(",") + ";";
+  }
+  s += "|" + state.turn;
+  return s;
+}
+
+
+/* ===== rules.js ===== */
+"use strict";
+/* ===== rules.js =====
+ * 将棋のルール層。
+ * - 駒の利き生成 pieceMoves
+ * - 攻撃判定 isAttacked / 王手判定 inCheck
+ * - 擬似合法手 generatePseudo（自玉の安全は考慮しない）
+ * - 合法手 legalMoves（王手放置の除外・打ち歩詰めの除外まで含む）
+ * - make / unmake（探索用のインプレース適用・取り消し）
+ *
+ * 指し手の表現:
+ *   移動: { from:{r,c}, to:{r,c}, promote:bool }
+ *   打ち: { drop:'P'.., to:{r,c} }
+ */
+
+/* ある駒が到達できるマス一覧（移動と攻撃判定で共通利用） */
+function pieceMoves(board, r, c) {
+  const p = board[r][c];
+  if (!p) return [];
+  const o = p.o;
+  const f = o === SENTE ? -1 : 1; // 前方向（先手は上=row減少）
+  const res = [];
+
+  const add = (rr, cc) => {
+    if (!inBoard(rr, cc)) return;
+    const t = board[rr][cc];
+    if (t && t.o === o) return; // 自駒には進めない
+    res.push({ r: rr, c: cc });
+  };
+  const slide = (dr, dc) => {
+    let rr = r + dr, cc = c + dc;
+    while (inBoard(rr, cc)) {
+      const t = board[rr][cc];
+      if (t) {
+        if (t.o !== o) res.push({ r: rr, c: cc });
+        break;
+      }
+      res.push({ r: rr, c: cc });
+      rr += dr; cc += dc;
+    }
+  };
+  const gold = () => {
+    [[f, -1], [f, 0], [f, 1], [0, -1], [0, 1], [-f, 0]].forEach((d) => add(r + d[0], c + d[1]));
+  };
+
+  const t = p.t;
+
+  if (p.pr) {
+    if (t === "P" || t === "L" || t === "N" || t === "S") { gold(); return res; }
+    if (t === "B") { // 馬 = 角 + 縦横1
+      [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach((d) => slide(d[0], d[1]));
+      [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach((d) => add(r + d[0], c + d[1]));
+      return res;
+    }
+    if (t === "R") { // 龍 = 飛 + 斜め1
+      [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach((d) => slide(d[0], d[1]));
+      [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach((d) => add(r + d[0], c + d[1]));
+      return res;
+    }
+  }
+
+  switch (t) {
+    case "P": add(r + f, c); break;
+    case "L": slide(f, 0); break;
+    case "N": add(r + 2 * f, c - 1); add(r + 2 * f, c + 1); break;
+    case "S": [[f, -1], [f, 0], [f, 1], [-f, -1], [-f, 1]].forEach((d) => add(r + d[0], c + d[1])); break;
+    case "G": gold(); break;
+    case "B": [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach((d) => slide(d[0], d[1])); break;
+    case "R": [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach((d) => slide(d[0], d[1])); break;
+    case "K": [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]
+      .forEach((d) => add(r + d[0], c + d[1])); break;
+  }
+  return res;
+}
+
+/* (r,c) が byOwner の駒に攻撃されているか */
+function isAttacked(board, r, c, byOwner) {
+  for (let rr = 0; rr < 9; rr++) {
+    for (let cc = 0; cc < 9; cc++) {
+      const p = board[rr][cc];
+      if (!p || p.o !== byOwner) continue;
+      const ms = pieceMoves(board, rr, cc);
+      for (let i = 0; i < ms.length; i++) {
+        if (ms[i].r === r && ms[i].c === c) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function findKing(board, side) {
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const p = board[r][c];
+      if (p && p.t === "K" && p.o === side) return { r, c };
+    }
+  return null;
+}
+
+function inCheck(state, side) {
+  const k = findKing(state.board, side);
+  if (!k) return true; // 玉が居ない＝取られている
+  return isAttacked(state.board, k.r, k.c, 1 - side);
+}
+
+/* 敵陣判定 */
+function inEnemyCamp(side, r) {
+  return side === SENTE ? r <= 2 : r >= 6;
+}
+
+/* 擬似合法手（自玉の安全は無視） */
+function generatePseudo(state, side) {
+  const b = state.board;
+  const moves = [];
+
+  // 盤上の駒の移動
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      if (!p || p.o !== side) continue;
+      const dests = pieceMoves(b, r, c);
+      const promotable = !p.pr && PROMOTABLE.indexOf(p.t) >= 0;
+      for (const d of dests) {
+        const from = { r, c }, to = { r: d.r, c: d.c };
+        const canPromote = promotable && (inEnemyCamp(side, r) || inEnemyCamp(side, d.r));
+        // 行き所のない駒は強制成り
+        let forced = false;
+        if (promotable) {
+          if (p.t === "P" || p.t === "L") forced = side === SENTE ? d.r === 0 : d.r === 8;
+          else if (p.t === "N") forced = side === SENTE ? d.r <= 1 : d.r >= 7;
+        }
+        if (canPromote && forced) {
+          moves.push({ from, to, promote: true });
+        } else if (canPromote) {
+          moves.push({ from, to, promote: true });
+          moves.push({ from, to, promote: false });
+        } else {
+          moves.push({ from, to, promote: false });
+        }
+      }
+    }
+  }
+
+  // 持ち駒を打つ
+  const hand = state.hands[side];
+  for (const type of ["P", "L", "N", "S", "G", "B", "R"]) {
+    if (hand[type] <= 0) continue;
+    for (let r = 0; r < 9; r++) {
+      // 行き所のない打ち先を除外
+      if (type === "P" || type === "L") {
+        if (side === SENTE && r === 0) continue;
+        if (side === GOTE && r === 8) continue;
+      }
+      if (type === "N") {
+        if (side === SENTE && r <= 1) continue;
+        if (side === GOTE && r >= 7) continue;
+      }
+      for (let c = 0; c < 9; c++) {
+        if (b[r][c]) continue;
+        if (type === "P" && hasOwnPawn(b, side, c)) continue; // 二歩
+        moves.push({ drop: type, to: { r, c } });
+      }
+    }
+  }
+  return moves;
+}
+
+/* その筋（列）に自分の不成の歩があるか（二歩判定） */
+function hasOwnPawn(board, side, col) {
+  for (let r = 0; r < 9; r++) {
+    const p = board[r][col];
+    if (p && p.o === side && p.t === "P" && !p.pr) return true;
+  }
+  return false;
+}
+
+/* 指し手を盤に適用する。side は state.turn から決まり、手番とハッシュも更新する。
+ * 取り消し情報 undo を返す。 */
+function make(state, m) {
+  const side = state.turn;
+  const b = state.board;
+  let undo;
+  if (m.drop) {
+    const hi = HAND_IDX[m.drop];
+    const cnt = state.hands[side][m.drop];
+    state.hash ^= Z_HAND[side][hi][cnt];
+    state.hands[side][m.drop] = cnt - 1;
+    state.hash ^= Z_HAND[side][hi][cnt - 1];
+    const np = makePiece(m.drop, side, false);
+    b[m.to.r][m.to.c] = np;
+    state.hash ^= Z_PIECE[side][0][TYPE_INDEX[m.drop]][m.to.r * 9 + m.to.c];
+    undo = { drop: m.drop, to: m.to };
+  } else {
+    const p = b[m.from.r][m.from.c];
+    const captured = b[m.to.r][m.to.c];
+    const wasPr = p.pr;
+    const fromSq = m.from.r * 9 + m.from.c;
+    const toSq = m.to.r * 9 + m.to.c;
+    state.hash ^= Z_PIECE[p.o][p.pr ? 1 : 0][TYPE_INDEX[p.t]][fromSq]; // 移動元から除去
+    if (captured && captured.t !== "K") { // 玉は持ち駒にならない（防御的ガード）
+      state.hash ^= Z_PIECE[captured.o][captured.pr ? 1 : 0][TYPE_INDEX[captured.t]][toSq];
+      const hi = HAND_IDX[captured.t];
+      const c0 = state.hands[side][captured.t];
+      state.hash ^= Z_HAND[side][hi][c0];
+      state.hands[side][captured.t] = c0 + 1; // 成駒を取っても基本種で持つ
+      state.hash ^= Z_HAND[side][hi][c0 + 1];
+    } else if (captured) {
+      // 玉を取る手（合法手生成では到達しないが、不正局面での探索クラッシュを防ぐ）
+      state.hash ^= Z_PIECE[captured.o][captured.pr ? 1 : 0][TYPE_INDEX[captured.t]][toSq];
+    }
+    b[m.from.r][m.from.c] = null;
+    if (m.promote) p.pr = true;
+    b[m.to.r][m.to.c] = p;
+    state.hash ^= Z_PIECE[p.o][p.pr ? 1 : 0][TYPE_INDEX[p.t]][toSq]; // 移動先へ設置
+    undo = { from: m.from, to: m.to, captured, wasPr };
+  }
+  state.turn = 1 - side;
+  state.hash ^= Z_TURN;
+  state.hash >>>= 0; // 符号なし32bitに正規化（TTキーの一貫性のため）
+  return undo;
+}
+
+function unmake(state, undo) {
+  state.hash ^= Z_TURN;
+  state.turn = 1 - state.turn; // 手を指した側に戻す
+  const side = state.turn;
+  const b = state.board;
+  if (undo.drop) {
+    const toSq = undo.to.r * 9 + undo.to.c;
+    state.hash ^= Z_PIECE[side][0][TYPE_INDEX[undo.drop]][toSq];
+    b[undo.to.r][undo.to.c] = null;
+    const hi = HAND_IDX[undo.drop];
+    const c0 = state.hands[side][undo.drop];
+    state.hash ^= Z_HAND[side][hi][c0];
+    state.hands[side][undo.drop] = c0 + 1;
+    state.hash ^= Z_HAND[side][hi][c0 + 1];
+  } else {
+    const p = b[undo.to.r][undo.to.c];
+    const toSq = undo.to.r * 9 + undo.to.c;
+    const fromSq = undo.from.r * 9 + undo.from.c;
+    state.hash ^= Z_PIECE[p.o][p.pr ? 1 : 0][TYPE_INDEX[p.t]][toSq]; // 移動先から除去
+    p.pr = undo.wasPr;
+    b[undo.from.r][undo.from.c] = p;
+    state.hash ^= Z_PIECE[p.o][p.pr ? 1 : 0][TYPE_INDEX[p.t]][fromSq]; // 移動元へ戻す
+    b[undo.to.r][undo.to.c] = undo.captured || null;
+    if (undo.captured && undo.captured.t !== "K") {
+      const cap = undo.captured;
+      state.hash ^= Z_PIECE[cap.o][cap.pr ? 1 : 0][TYPE_INDEX[cap.t]][toSq];
+      const hi = HAND_IDX[cap.t];
+      const c0 = state.hands[side][cap.t];
+      state.hash ^= Z_HAND[side][hi][c0];
+      state.hands[side][cap.t] = c0 - 1;
+      state.hash ^= Z_HAND[side][hi][c0 - 1];
+    } else if (undo.captured) {
+      const cap = undo.captured;
+      state.hash ^= Z_PIECE[cap.o][cap.pr ? 1 : 0][TYPE_INDEX[cap.t]][toSq];
+    }
+  }
+  state.hash >>>= 0; // 符号なし32bitに正規化
+}
+
+/* 合法手：王手放置を除外し、打ち歩詰めも除外。
+ * side 省略時は state.turn。side を指定した場合は手番を一時的に合わせる。 */
+function legalMoves(state, side) {
+  if (side === undefined) side = state.turn;
+  let restore = false, savedTurn = state.turn;
+  if (state.turn !== side) { state.turn = side; state.hash = (state.hash ^ Z_TURN) >>> 0; restore = true; }
+
+  const pseudo = generatePseudo(state, side);
+  const res = [];
+  for (const m of pseudo) {
+    const undo = make(state, m); // make 後 state.turn は相手番
+    let ok = !inCheck(state, side);
+    if (ok && m.drop === "P") {
+      // 打ち歩詰め：歩を打って相手が即詰みなら非合法
+      if (inCheck(state, 1 - side) && legalMoves(state).length === 0) ok = false;
+    }
+    unmake(state, undo);
+    if (ok) res.push(m);
+  }
+
+  if (restore) { state.turn = savedTurn; state.hash = (state.hash ^ Z_TURN) >>> 0; }
+  return res;
+}
+
+
+/* ===== ai.js ===== */
+"use strict";
+/* ===== ai.js =====
+ * 難易度別の思考エンジン。
+ *   weak   … 1手評価＋ランダム（初心者向け、たまに悪手）
+ *   normal … αβ＋反復深化（約1.2秒・静止探索なし）
+ *   strong … αβ＋反復深化＋静止探索＋置換表＋手順並べ替え＋充実評価＋簡易定跡（既定10秒）
+ *
+ * make/unmake は state.turn を見て手番とハッシュを自動更新する（rules.js）。
+ */
+
+const PIECE_VALUE = { P: 100, L: 430, N: 450, S: 640, G: 690, B: 890, R: 1040, K: 15000 };
+const PROMOTED_VALUE = { P: 600, L: 600, N: 600, S: 670, B: 1150, R: 1300 };
+const MATE = 1000000;
+const INF = 1e9;
+const TIMEOUT = "TIMEOUT";
+
+// 探索の可変状態
+let TT = new Map();          // hash -> {depth, value, flag, move}  flag: 0=EXACT 1=LOWER 2=UPPER
+let KILLERS = [];            // KILLERS[ply] = [moveKey, moveKey]
+let HISTORY = {};            // moveKey -> score
+let DEADLINE = 0;            // 0=無制限, それ以外は Date.now() の上限
+let NODES = 0;
+let USE_QUI = true;          // 静止探索の有無
+let STRONG_TIME = 14000;     // 「強い」の思考時間(ms)。worker から上書きされる
+let LAST_DEPTH = 0;          // 直近の探索で到達した深さ（計測用）
+let LAST_VALUE = 0;          // 直近の探索の評価値（計測用）
+
+function timeUp() {
+  if (!DEADLINE) return false;
+  if ((++NODES & 1023) !== 0) return false; // 1024ノードごとにのみ時刻を確認
+  return Date.now() > DEADLINE;
+}
+
+/* ---- 評価 ---- */
+function pieceValue(p) {
+  if (p.pr && PROMOTED_VALUE[p.t] != null) return PROMOTED_VALUE[p.t];
+  return PIECE_VALUE[p.t];
+}
+
+/* 駒得（先手視点） */
+function material(state) {
+  let s = 0;
+  const b = state.board;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      if (!p) continue;
+      s += p.o === SENTE ? pieceValue(p) : -pieceValue(p);
+    }
+  for (let side = 0; side < 2; side++) {
+    const h = state.hands[side];
+    let hv = 0;
+    for (const k in h) hv += h[k] * Math.round(PIECE_VALUE[k] * 1.10); // 持ち駒は割増
+    s += side === SENTE ? hv : -hv;
+  }
+  return s;
+}
+
+/* 自陣からの前進度（0=自陣最奥, 8=敵陣最奥） */
+function advance(side, r) { return side === SENTE ? 8 - r : r; }
+
+/* 位置評価（先手視点）：駒の前進・中央志向・玉の囲い */
+function positional(state) {
+  let s = 0;
+  const b = state.board;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      if (!p) continue;
+      const adv = advance(p.o, r);
+      const cd = Math.abs(c - 4); // 中央からの距離
+      let v = 0;
+      if (p.pr) {
+        v = adv * 3; // 成駒は前進をやや評価
+      } else {
+        switch (p.t) {
+          case "P": v = adv * 9; break;                    // 歩は伸ばす
+          case "L": v = adv * 3; break;
+          case "N": v = adv * 7; break;
+          case "S": v = adv * 5 + (4 - cd) * 2; break;       // 銀は前へ・中央へ
+          case "G": v = adv * 4 + (4 - cd) * 2; break;
+          case "B": v = adv * 2; break;
+          case "R": v = adv * 3; break;
+          case "K": v = cd * 10 - adv * 12; break;           // 玉は端・自陣へ（囲い誘導）
+        }
+      }
+      s += p.o === SENTE ? v : -v;
+    }
+  return s;
+}
+
+/* 玉の安全度（先手視点）：近傍の味方守備と、近傍が敵に利いている度合い */
+function kingSafety(state) {
+  let s = 0;
+  const b = state.board;
+  for (let side = 0; side < 2; side++) {
+    const k = findKing(b, side);
+    if (!k) continue;
+    let guard = 0, exposed = 0;
+    for (let dr = -1; dr <= 1; dr++)
+      for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const rr = k.r + dr, cc = k.c + dc;
+        if (!inBoard(rr, cc)) continue;
+        const p = b[rr][cc];
+        if (p && p.o === side) guard++;
+        if (isAttacked(b, rr, cc, 1 - side)) exposed++;
+      }
+    const val = guard * 28 - exposed * 22;
+    s += side === SENTE ? val : -val;
+  }
+  return s;
+}
+
+/* 大駒（角飛と馬龍）の働き（先手視点） */
+function mobility(state) {
+  let s = 0;
+  const b = state.board;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      if (!p) continue;
+      if (p.t === "B" || p.t === "R") {
+        const m = pieceMoves(b, r, c).length;
+        s += (p.o === SENTE ? m : -m) * 4;
+      }
+    }
+  return s;
+}
+
+/* 先手視点の総合評価 */
+function evaluateSente(state) {
+  return material(state) + positional(state) + kingSafety(state) + mobility(state);
+}
+
+/* 手番側から見た評価値 */
+function evalForSide(state, side) {
+  const v = evaluateSente(state);
+  return side === SENTE ? v : -v;
+}
+
+/* ---- 手順の並べ替え ---- */
+function moveKey(m) {
+  return m.drop
+    ? "D" + m.drop + m.to.r + m.to.c
+    : "M" + m.from.r + m.from.c + m.to.r + m.to.c + (m.promote ? "1" : "0");
+}
+
+function isCapture(state, m) {
+  return !!(m.from && state.board[m.to.r][m.to.c]);
+}
+
+function orderMoves(state, moves, ttKey, ply) {
+  const b = state.board;
+  const killers = KILLERS[ply] || null;
+  for (const m of moves) {
+    let sc;
+    const key = moveKey(m);
+    if (ttKey && key === ttKey) {
+      sc = 2e7;
+    } else if (m.from && b[m.to.r][m.to.c]) {
+      // 取る手：MVV-LVA（取る駒の価値を高く、動かす駒の価値を低く）
+      const victim = pieceValue(b[m.to.r][m.to.c]);
+      const attacker = pieceValue(b[m.from.r][m.from.c]);
+      sc = 1e7 + victim * 16 - attacker + (m.promote ? 400 : 0);
+    } else if (killers && (key === killers[0] || key === killers[1])) {
+      sc = 9e6;
+    } else {
+      sc = (HISTORY[key] || 0) + (m.promote ? 200 : 0);
+    }
+    m._s = sc;
+  }
+  moves.sort((a, x) => x._s - a._s);
+}
+
+/* 取る手・王手回避手の並べ替え（非取り・打ちも安全に扱う） */
+function orderCaptures(state, moves) {
+  const b = state.board;
+  for (const m of moves) {
+    const target = m.from ? b[m.to.r][m.to.c] : null;
+    if (target) {
+      const attacker = pieceValue(b[m.from.r][m.from.c]);
+      m._s = pieceValue(target) * 16 - attacker + (m.promote ? 400 : 0);
+    } else {
+      m._s = m.promote ? 300 : 0;
+    }
+  }
+  moves.sort((a, x) => x._s - a._s);
+}
+
+function addKiller(ply, m) {
+  const key = moveKey(m);
+  const k = KILLERS[ply] || (KILLERS[ply] = [null, null]);
+  if (k[0] !== key) { k[1] = k[0]; k[0] = key; }
+}
+function addHistory(m, depth) {
+  const key = moveKey(m);
+  HISTORY[key] = (HISTORY[key] || 0) + depth * depth;
+}
+
+/* ---- 静止探索（取り合いが落ち着くまで延長） ---- */
+function qsearch(state, alpha, beta, ply) {
+  if (timeUp()) throw TIMEOUT;
+  const side = state.turn;
+  const checked = inCheck(state, side);
+
+  if (!checked) {
+    const stand = evalForSide(state, side);
+    if (stand >= beta) return beta;
+    if (stand > alpha) alpha = stand;
+  }
+
+  let moves = legalMoves(state);
+  if (moves.length === 0) return checked ? -MATE + ply : alpha; // 王手中に手なし＝詰み
+  if (!checked) moves = moves.filter((m) => m.from && state.board[m.to.r][m.to.c]); // 取る手のみ
+  orderCaptures(state, moves);
+
+  let best = checked ? -INF : alpha;
+  for (const m of moves) {
+    const undo = make(state, m);
+    let v;
+    try { v = -qsearch(state, -beta, -alpha, ply + 1); }
+    finally { unmake(state, undo); }
+    if (v > best) best = v;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+/* 手番だけ相手に渡す（null move 用）。盤は動かさない。 */
+function makeNull(state) {
+  state.turn = 1 - state.turn;
+  state.hash = (state.hash ^ Z_TURN) >>> 0;
+}
+function unmakeNull(state) {
+  state.turn = 1 - state.turn;
+  state.hash = (state.hash ^ Z_TURN) >>> 0;
+}
+
+/* 手番側が玉以外の駒（盤上の大駒・小駒）を持っているか。
+ * null move は zugzwang（手を渡すと損する局面）で危険なので、駒が乏しいと無効化する。 */
+function hasNonKingMaterial(state, side) {
+  const b = state.board;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const p = b[r][c];
+      if (p && p.o === side && p.t !== "K") return true;
+    }
+  const h = state.hands[side];
+  for (const k in h) if (h[k] > 0) return true;
+  return false;
+}
+
+/* ---- 主探索（negamax + αβ + 置換表 + 王手延長 + null-move 枝刈り） ---- */
+function search(state, depth, alpha, beta, ply, canNull) {
+  if (timeUp()) throw TIMEOUT;
+  const alphaOrig = alpha;
+  const side = state.turn;
+  const checked = inCheck(state, side);
+
+  // 王手されている局面は1手延長して読む（詰み/必至の精度が大きく上がる）
+  if (checked) depth++;
+
+  const tt = TT.get(state.hash);
+  let ttKey = null;
+  if (tt) {
+    ttKey = tt.move;
+    if (tt.depth >= depth) {
+      if (tt.flag === 0) return tt.value;
+      if (tt.flag === 1 && tt.value > alpha) alpha = tt.value;
+      else if (tt.flag === 2 && tt.value < beta) beta = tt.value;
+      if (alpha >= beta) return tt.value;
+    }
+  }
+
+  if (depth <= 0) return USE_QUI ? qsearch(state, alpha, beta, ply) : evalForSide(state, side);
+
+  // Null-move 枝刈り：自分が1手パスしても β を超えるなら、この局面は十分良い → 枝刈り
+  if (canNull && !checked && depth >= 3 && Math.abs(beta) < MATE - 1000 &&
+      hasNonKingMaterial(state, side)) {
+    const R = depth > 6 ? 3 : 2; // 削減量
+    makeNull(state);
+    let v;
+    try { v = -search(state, depth - 1 - R, -beta, -beta + 1, ply + 1, false); }
+    finally { unmakeNull(state); }
+    if (v >= beta) return beta; // フェイルハイ → 枝刈り
+  }
+
+  const moves = legalMoves(state);
+  if (moves.length === 0) return -MATE + ply; // 詰み（手番側の負け）
+
+  orderMoves(state, moves, ttKey, ply);
+  let best = -INF, bestMove = null;
+  for (const m of moves) {
+    const undo = make(state, m);
+    let v;
+    try { v = -search(state, depth - 1, -beta, -alpha, ply + 1, true); }
+    finally { unmake(state, undo); }
+    if (v > best) { best = v; bestMove = m; }
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) {
+      if (!isCapture(state, m)) { addKiller(ply, m); addHistory(m, depth); }
+      break;
+    }
+  }
+
+  const flag = best <= alphaOrig ? 2 : best >= beta ? 1 : 0;
+  if (TT.size > 2000000) TT.clear(); // メモリ上限
+  TT.set(state.hash, { depth, value: best, flag, move: bestMove ? moveKey(bestMove) : null });
+  return best;
+}
+
+/* ルート：反復深化の1回分 */
+function searchRoot(state, depth, rootMoves) {
+  const tt = TT.get(state.hash);
+  const ttKey = tt ? tt.move : null;
+  orderMoves(state, rootMoves, ttKey, 0);
+  let alpha = -INF, best = null, bestv = -INF;
+  for (const m of rootMoves) {
+    const undo = make(state, m);
+    let v;
+    try { v = -search(state, depth - 1, -INF, -alpha, 1, true); }
+    finally { unmake(state, undo); }
+    if (v > bestv) { bestv = v; best = m; }
+    if (bestv > alpha) alpha = bestv;
+  }
+  TT.set(state.hash, { depth, value: bestv, flag: 0, move: best ? moveKey(best) : null });
+  return { move: best, value: bestv };
+}
+
+/* 反復深化で最善手を返す */
+function think(state, timeMs, useQui, maxDepth) {
+  TT = new Map(); KILLERS = []; HISTORY = {};
+  USE_QUI = useQui;
+  NODES = 0;
+  DEADLINE = timeMs > 0 ? Date.now() + timeMs : 0;
+
+  const rootMoves = legalMoves(state);
+  if (rootMoves.length === 0) return null;
+  let best = rootMoves[0];
+
+  LAST_DEPTH = 0; LAST_VALUE = 0;
+  for (let d = 1; d <= maxDepth; d++) {
+    try {
+      const r = searchRoot(state, d, rootMoves.slice());
+      if (r.move) best = r.move;
+      LAST_DEPTH = d; LAST_VALUE = r.value;
+      if (Math.abs(r.value) > MATE - 1000) break; // 詰みを発見したら打ち切り
+    } catch (e) {
+      if (e !== TIMEOUT) throw e;
+      break; // 時間切れ：直前の深さの結果を採用
+    }
+  }
+  DEADLINE = 0;
+  return best;
+}
+
+/* ---- 簡易定跡（序盤の形づくり） ---- */
+function bookMove(state) {
+  if (state.moveLog.length > 5) return null;
+  const side = state.turn;
+  // 候補：定番の歩突き・銀上がり（from→to）。先手基準、後手は行を反転。
+  const flip = (r) => 8 - r;
+  let cands;
+  if (side === SENTE) {
+    cands = [
+      [6, 2, 5, 2], // 7六歩
+      [6, 7, 5, 7], // 2六歩
+      [6, 4, 5, 4], // 5六歩
+      [8, 2, 7, 3], // 6八銀
+    ];
+  } else {
+    cands = [
+      [flip(6), 2, flip(5), 2],
+      [flip(6), 7, flip(5), 7],
+      [flip(6), 4, flip(5), 4],
+      [flip(8), 2, flip(7), 3],
+    ];
+  }
+  const legal = legalMoves(state);
+  const ok = [];
+  for (const [fr, fc, tr, tc] of cands) {
+    const hit = legal.find(
+      (m) => m.from && m.from.r === fr && m.from.c === fc && m.to.r === tr && m.to.c === tc && !m.promote
+    );
+    if (hit) ok.push(hit);
+  }
+  if (ok.length === 0) return null;
+  return ok[Math.floor(Math.random() * ok.length)];
+}
+
+/* ---- 公開API ---- */
+function chooseMove(state, difficulty) {
+  const moves = legalMoves(state);
+  if (moves.length === 0) return null;
+
+  if (difficulty === "weak") {
+    const side = state.turn;
+    const scored = moves.map((m) => {
+      const undo = make(state, m);
+      const v = evalForSide(state, side);
+      unmake(state, undo);
+      return { m, v };
+    });
+    scored.sort((a, b) => b.v - a.v);
+    if (Math.random() < 0.5) return scored[0].m;
+    return scored[Math.floor(Math.random() * scored.length)].m;
+  }
+
+  if (difficulty === "normal") {
+    return think(state, 1200, false, 5);
+  }
+
+  // strong
+  const bk = bookMove(state);
+  if (bk) return bk;
+  return think(state, STRONG_TIME, true, 32);
+}
+
+/* ---- Web Worker 用ソースの生成 ----
+ * メインスレッドに読み込んだ関数・定数を文字列化して結合し、Blob 経由で Worker を作る。
+ * importScripts も fetch も使わないため file:// でも動作する。 */
+function buildWorkerSource() {
+  const consts = {
+    SENTE, GOTE, PROMOTABLE, PTYPES, HAND_KINDS, HAND_IDX, TYPE_INDEX,
+    PIECE_VALUE, PROMOTED_VALUE, MATE, INF, TIMEOUT,
+  };
+  let header = "";
+  for (const k in consts) header += "var " + k + "=" + JSON.stringify(consts[k]) + ";\n";
+  header +=
+    "var Z_PIECE=null,Z_HAND=null,Z_TURN=0;\n" +
+    "var TT=new Map(),KILLERS=[],HISTORY={},DEADLINE=0,NODES=0,USE_QUI=true,STRONG_TIME=10000;\n";
+
+  const fns = [
+    // board
+    rand32, initZobrist, computeHash, makePiece, emptyHand, inBoard,
+    // rules
+    pieceMoves, isAttacked, findKing, inCheck, inEnemyCamp, hasOwnPawn,
+    generatePseudo, make, unmake, legalMoves,
+    // ai
+    timeUp, pieceValue, material, advance, positional, kingSafety, mobility,
+    evaluateSente, evalForSide, moveKey, isCapture, orderMoves, orderCaptures,
+    addKiller, addHistory, qsearch, makeNull, unmakeNull, hasNonKingMaterial,
+    search, searchRoot, think, bookMove, chooseMove,
+  ];
+  let body = "";
+  for (const f of fns) body += f.toString() + "\n\n";
+
+  const tail =
+    "self.onmessage=function(e){" +
+    "var d=e.data;initZobrist();var st=d.state;" +
+    "st.moveLog=st.moveLog||[];st.hash=computeHash(st);" +
+    "STRONG_TIME=d.timeMs||10000;" +
+    "var mv=chooseMove(st,d.difficulty);" +
+    "self.postMessage(mv);};\n";
+
+  return header + body + tail;
+}
+
+// Node 検証用に公開（ブラウザでは無害）
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { buildWorkerSource, chooseMove, think };
+}
+
+
+/* ===== game.js ===== */
+"use strict";
+/* ===== game.js =====
+ * 対局進行の制御。手を確定し、手番交代・勝敗・千日手を判定する。
+ */
+
+const PIECE_KANJI = {
+  P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "玉",
+};
+const PROMOTED_KANJI = {
+  P: "と", L: "杏", N: "圭", S: "全", B: "馬", R: "龍",
+};
+
+function pieceKanji(p) {
+  if (p.pr && PROMOTED_KANJI[p.t]) return PROMOTED_KANJI[p.t];
+  if (p.t === "K") return p.o === SENTE ? "玉" : "王";
+  return PIECE_KANJI[p.t];
+}
+
+/* 棋譜表記（簡易） */
+function moveToText(state, m, side) {
+  const colChar = (c) => "９８７６５４３２１"[c];
+  const rowChar = (r) => "一二三四五六七八九"[r];
+  const mark = side === SENTE ? "▲" : "△";
+  const to = colChar(m.to.c) + rowChar(m.to.r);
+  if (m.drop) return mark + to + PIECE_KANJI[m.drop] + "打";
+  const p = state.board[m.from.r][m.from.c];
+  return mark + to + pieceKanji(p) + (m.promote ? "成" : "");
+}
+
+/* 手を確定して状態を進める */
+function makeGameMove(state, m) {
+  const side = state.turn;
+  const text = moveToText(state, m, side);
+  make(state, m); // 手番とハッシュも更新される
+  state.moveLog.push(text);
+
+  const key = positionKey(state);
+  state.history.push(key);
+
+  const legal = legalMoves(state, state.turn);
+  if (legal.length === 0) {
+    // 手番側に合法手なし → 直前に指した側の勝ち
+    state.result = { type: "checkmate", winner: side };
+    return;
+  }
+  // 千日手（同一局面4回）。連続王手の千日手は今回は通常の引き分け扱い。
+  let reps = 0;
+  for (const k of state.history) if (k === key) reps++;
+  if (reps >= 4) {
+    state.result = { type: "sennichite" };
+  }
+}
+
+
+/* ===== ui.js ===== */
+"use strict";
+/* ===== ui.js =====
+ * 盤面描画・クリック操作・AI呼び出し。
+ */
+
+let STATE = null;
+let HUMAN_SIDE = SENTE;        // 人間の手番
+let DIFFICULTY = "normal";
+let selectedFrom = null;       // {r,c}
+let selectedDrop = null;       // 駒種
+let legalCache = [];           // 現手番の全合法手
+let busy = false;              // AI思考中
+
+// 思考時間(ms)
+const STRONG_TIME_MS = 14000;
+const NORMAL_TIME_MS = 1200;
+
+// Web Worker（思考をUIから切り離す）
+let WORKER = null;
+let WORKER_BROKEN = false; // 生成に失敗したら sync にフォールバック
+
+function getWorker() {
+  if (WORKER || WORKER_BROKEN) return WORKER;
+  try {
+    const src = buildWorkerSource();
+    const blob = new Blob([src], { type: "application/javascript" });
+    WORKER = new Worker(URL.createObjectURL(blob));
+  } catch (e) {
+    WORKER_BROKEN = true;
+    WORKER = null;
+  }
+  return WORKER;
+}
+
+const boardEl = () => document.getElementById("board");
+const HAND_TYPES = ["R", "B", "G", "S", "N", "L", "P"];
+
+function isHumanTurn() {
+  return STATE && !STATE.result && STATE.turn === HUMAN_SIDE && !busy;
+}
+
+function newGame() {
+  // 進行中のAI思考を確実に止める（古い手が新しい局面に適用されるのを防ぐ）
+  if (WORKER) { WORKER.terminate(); WORKER = null; WORKER_BROKEN = false; }
+  STATE = newState();
+  HUMAN_SIDE = document.getElementById("side").value === "gote" ? GOTE : SENTE;
+  DIFFICULTY = document.getElementById("difficulty").value;
+  selectedFrom = null;
+  selectedDrop = null;
+  busy = false;
+  refreshLegal();
+  render();
+  if (STATE.turn !== HUMAN_SIDE) scheduleAI();
+}
+
+function refreshLegal() {
+  legalCache = STATE.result ? [] : legalMoves(STATE, STATE.turn);
+}
+
+/* ---- 描画 ---- */
+function render() {
+  renderBoard();
+  renderHands();
+  renderStatus();
+  renderLog();
+}
+
+function renderBoard() {
+  const el = boardEl();
+  el.innerHTML = "";
+  // 上が後手。盤は常に先手＝下で描画。
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      const p = STATE.board[r][c];
+      if (p) {
+        const span = document.createElement("span");
+        span.className = "piece" + (p.o === GOTE ? " gote" : "") + (p.pr ? " promoted" : "");
+        span.textContent = pieceKanji(p);
+        cell.appendChild(span);
+      }
+      // ハイライト
+      if (selectedFrom && selectedFrom.r === r && selectedFrom.c === c) cell.classList.add("selected");
+      if (isTargetSquare(r, c)) cell.classList.add("target");
+      cell.addEventListener("click", () => onCellClick(r, c));
+      el.appendChild(cell);
+    }
+  }
+}
+
+function isTargetSquare(r, c) {
+  if (!isHumanTurn()) return false;
+  if (selectedDrop) {
+    return legalCache.some((m) => m.drop === selectedDrop && m.to.r === r && m.to.c === c);
+  }
+  if (selectedFrom) {
+    return legalCache.some(
+      (m) => m.from && m.from.r === selectedFrom.r && m.from.c === selectedFrom.c && m.to.r === r && m.to.c === c
+    );
+  }
+  return false;
+}
+
+function renderHands() {
+  for (const side of [SENTE, GOTE]) {
+    const el = document.getElementById(side === SENTE ? "hand-sente" : "hand-gote");
+    el.innerHTML = "";
+    const h = STATE.hands[side];
+    for (const t of HAND_TYPES) {
+      if (h[t] <= 0) continue;
+      const d = document.createElement("div");
+      d.className = "hand-piece" + (side === GOTE ? " gote" : "");
+      if (selectedDrop === t && STATE.turn === side && side === HUMAN_SIDE) d.classList.add("selected");
+      d.textContent = PIECE_KANJI[t] + (h[t] > 1 ? h[t] : "");
+      d.addEventListener("click", () => onHandClick(side, t));
+      el.appendChild(d);
+    }
+  }
+}
+
+function renderStatus() {
+  const el = document.getElementById("status");
+  if (STATE.result) {
+    if (STATE.result.type === "checkmate") {
+      const w = STATE.result.winner === SENTE ? "先手" : "後手";
+      const who = STATE.result.winner === HUMAN_SIDE ? "あなたの勝ち！" : "AIの勝ち";
+      el.textContent = `詰み — ${w}の勝ち（${who}）`;
+    } else if (STATE.result.type === "sennichite") {
+      el.textContent = "千日手 — 引き分け";
+    } else if (STATE.result.type === "resign") {
+      const w = STATE.result.winner === SENTE ? "先手" : "後手";
+      el.textContent = `投了 — ${w}の勝ち`;
+    }
+    el.className = "status over";
+    return;
+  }
+  const t = STATE.turn === SENTE ? "先手" : "後手";
+  const check = inCheck(STATE, STATE.turn) ? "（王手！）" : "";
+  const who = busy ? "AI思考中…" : STATE.turn === HUMAN_SIDE ? "あなたの番" : "AIの番";
+  el.textContent = `${t}番 — ${who}${check}`;
+  el.className = "status";
+}
+
+function renderLog() {
+  const el = document.getElementById("log");
+  if (!el) return;
+  el.innerHTML = "";
+  STATE.moveLog.forEach((t, i) => {
+    const d = document.createElement("div");
+    d.textContent = `${i + 1}. ${t}`;
+    el.appendChild(d);
+  });
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---- 操作 ---- */
+function onCellClick(r, c) {
+  if (!isHumanTurn()) return;
+
+  if (selectedDrop) {
+    const m = legalCache.find((x) => x.drop === selectedDrop && x.to.r === r && x.to.c === c);
+    if (m) { applyHumanMove(m); return; }
+    selectedDrop = null; render(); return;
+  }
+
+  if (selectedFrom) {
+    const matches = legalCache.filter(
+      (x) => x.from && x.from.r === selectedFrom.r && x.from.c === selectedFrom.c && x.to.r === r && x.to.c === c
+    );
+    if (matches.length > 0) {
+      let m = matches[0];
+      if (matches.length > 1) {
+        // 成り／不成の選択
+        const yes = window.confirm("成りますか？（キャンセルで不成）");
+        m = matches.find((x) => x.promote === yes) || matches[0];
+      }
+      applyHumanMove(m);
+      return;
+    }
+    // 別の自駒を選び直し
+    const p = STATE.board[r][c];
+    if (p && p.o === HUMAN_SIDE) { selectedFrom = { r, c }; render(); return; }
+    selectedFrom = null; render(); return;
+  }
+
+  const p = STATE.board[r][c];
+  if (p && p.o === HUMAN_SIDE) { selectedFrom = { r, c }; render(); }
+}
+
+function onHandClick(side, t) {
+  if (!isHumanTurn()) return;
+  if (side !== HUMAN_SIDE) return;
+  selectedFrom = null;
+  selectedDrop = selectedDrop === t ? null : t;
+  render();
+}
+
+function applyHumanMove(m) {
+  selectedFrom = null;
+  selectedDrop = null;
+  makeGameMove(STATE, m);
+  refreshLegal();
+  render();
+  if (!STATE.result && STATE.turn !== HUMAN_SIDE) scheduleAI();
+}
+
+function timeForDifficulty() {
+  if (DIFFICULTY === "strong") return STRONG_TIME_MS;
+  if (DIFFICULTY === "normal") return NORMAL_TIME_MS;
+  return 0;
+}
+
+function onAIMove(m) {
+  busy = false;
+  if (!STATE || STATE.result) return; // 対局リセット等が挟まった場合
+  if (!m) { refreshLegal(); render(); return; }
+  makeGameMove(STATE, m);
+  refreshLegal();
+  render();
+  if (!STATE.result && STATE.turn !== HUMAN_SIDE) scheduleAI();
+}
+
+function scheduleAI() {
+  busy = true;
+  renderStatus();
+  const w = getWorker();
+  if (w) {
+    // 盤面だけを渡す（関数を含まない素のデータ）
+    const payload = {
+      state: { board: STATE.board, hands: STATE.hands, turn: STATE.turn, moveLog: STATE.moveLog },
+      difficulty: DIFFICULTY,
+      timeMs: timeForDifficulty(),
+    };
+    w.onmessage = (e) => onAIMove(e.data);
+    w.onerror = () => { WORKER_BROKEN = true; WORKER = null; setTimeout(() => onAIMove(chooseMove(STATE, DIFFICULTY)), 10); };
+    w.postMessage(JSON.parse(JSON.stringify(payload)));
+  } else {
+    // フォールバック：メインスレッドで思考（UIは一時的に止まる）
+    if (DIFFICULTY === "strong") STRONG_TIME = STRONG_TIME_MS;
+    setTimeout(() => onAIMove(chooseMove(STATE, DIFFICULTY)), 30);
+  }
+}
+
+function resign() {
+  if (!STATE || STATE.result) return;
+  if (WORKER) { WORKER.terminate(); WORKER = null; }
+  busy = false;
+  STATE.result = { type: "resign", winner: 1 - HUMAN_SIDE };
+  render();
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("newgame").addEventListener("click", newGame);
+  document.getElementById("resign").addEventListener("click", resign);
+  newGame();
+});
+
+  </script>
+</body>
+</html>

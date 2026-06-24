@@ -1,0 +1,139 @@
+* { box-sizing: border-box; }
+
+:root {
+  /* 盤マスの一辺。画面が狭いほど自動で縮む（最大44px）。
+     盤9マス＋左右の余白を引いて画面幅に収める。 */
+  --cell: min(44px, calc((100vw - 24px) / 9));
+}
+
+html { -webkit-text-size-adjust: 100%; } /* スマホで文字が勝手に拡大されるのを防ぐ */
+
+body {
+  font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  background: #f3ede2;
+  color: #2b2b2b;
+  margin: 0;
+  padding: 12px;
+  -webkit-tap-highlight-color: transparent; /* タップ時の青いハイライトを消す */
+}
+
+h1 { font-size: 20px; margin: 0 0 12px; }
+
+.layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.controls label { font-size: 14px; }
+.controls select, .controls button {
+  font-size: 16px;            /* 16px未満だと iOS で入力時に画面が拡大する */
+  padding: 8px 12px;          /* タップしやすいサイズに */
+  border-radius: 6px;
+  border: 1px solid #b9a98c;
+  background: #fff;
+  cursor: pointer;
+}
+.controls button { background: #8b5e34; color: #fff; border: none; }
+.controls button:hover { background: #74471f; }
+
+.status {
+  font-size: 16px;
+  font-weight: bold;
+  margin: 8px 0;
+  min-height: 22px;
+}
+.status.over { color: #b00020; }
+
+/* 盤と持ち駒 */
+.board-area { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+.hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: calc(var(--cell) * 0.95);
+  width: calc(var(--cell) * 9);   /* 盤と同じ幅 */
+  padding: 4px;
+  background: #e8dcc4;
+  border-radius: 6px;
+}
+.hand-label { font-size: 12px; color: #6a5a3c; width: 100%; }
+
+.hand-piece {
+  width: calc(var(--cell) * 0.8);
+  height: calc(var(--cell) * 0.88);
+  display: flex; align-items: center; justify-content: center;
+  background: #f6e3b8;
+  border: 1px solid #caa86a;
+  border-radius: 4px;
+  font-size: calc(var(--cell) * 0.42);
+  font-weight: bold;
+  cursor: pointer; user-select: none;
+}
+.hand-piece.gote { transform: rotate(180deg); }
+.hand-piece.selected { outline: 3px solid #2e7d32; }
+
+#board {
+  display: grid;
+  grid-template-columns: repeat(9, var(--cell));
+  grid-template-rows: repeat(9, var(--cell));
+  background: #d9b271;
+  border: 3px solid #6b4a1e;
+  width: max-content;
+  touch-action: manipulation;     /* ダブルタップによるズームを抑制 */
+}
+
+.cell {
+  border: 1px solid #8a6a39;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+.cell .piece {
+  font-size: calc(var(--cell) * 0.55);
+  font-weight: bold; line-height: 1;
+  user-select: none;
+}
+.cell .piece.gote { transform: rotate(180deg); color: #1a1a1a; }
+.cell .piece.promoted { color: #b00020; }
+.cell.selected { background: rgba(46,125,50,.35); }
+.cell.target::after {
+  content: "";
+  position: absolute;
+  width: calc(var(--cell) * 0.32);
+  height: calc(var(--cell) * 0.32);
+  border-radius: 50%;
+  background: rgba(46,125,50,.55);
+}
+.cell.target:hover { background: rgba(46,125,50,.25); }
+
+/* 棋譜 */
+.sidebar { width: 200px; }
+#log {
+  height: 420px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #caa86a;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* スマホなど狭い画面：棋譜を盤の下にまわし、横幅いっぱいに */
+@media (max-width: 620px) {
+  body { padding: 8px; }
+  h1 { font-size: 18px; }
+  .layout { gap: 12px; }
+  .sidebar { width: calc(var(--cell) * 9); }
+  #log { height: 140px; }
+}
