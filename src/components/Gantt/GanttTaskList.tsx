@@ -31,7 +31,7 @@ function toInputDate(d: Date): string {
 // ─── 型定義 ───────────────────────────────────────────────────
 interface EditingCell {
   taskId: string
-  field: 'name' | 'start' | 'end' | 'category'
+  field: 'name' | 'start' | 'end' | 'category' | 'url'
   value: string
 }
 
@@ -130,6 +130,8 @@ export function GanttTaskList({
       updateTask(taskId, { name: value.trim() })
     } else if (field === 'category') {
       updateTask(taskId, { category: value.trim() || undefined })
+    } else if (field === 'url') {
+      updateTask(taskId, { url: value.trim() || undefined })
     }
     setEditingCell(null)
   }
@@ -157,6 +159,8 @@ export function GanttTaskList({
         const editingEnd      = isEditing(task.id, 'end')
         const editingName     = isEditing(task.id, 'name')
         const editingCategory = isEditing(task.id, 'category')
+        const editingUrl      = isEditing(task.id, 'url')
+        const hasUrl          = !!(storeTask?.url)
 
         const isDragging   = dragId === task.id
         const isDropTarget = dropInfo?.targetId === task.id
@@ -277,8 +281,9 @@ export function GanttTaskList({
             {/* ── 名前列 ── */}
             <div style={{
               flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
-              paddingLeft, paddingRight: 4, overflow: 'hidden',
+              paddingLeft, paddingRight: 4, overflow: 'visible',
               borderLeft: '1px solid #f3f4f6',
+              position: 'relative', zIndex: editingUrl ? 10 : undefined,
             }}>
               {connector && (
                 <span style={{ fontFamily: 'monospace', color: '#9ca3af', marginRight: 3, flexShrink: 0 }}>
@@ -298,7 +303,30 @@ export function GanttTaskList({
                   {isCollapsed ? '▶' : '▼'}
                 </button>
               )}
-              {editingName ? (
+
+              {editingUrl ? (
+                /* URL 入力モード */
+                <input
+                  type="url"
+                  autoFocus
+                  placeholder="https://..."
+                  value={editingCell!.value}
+                  onChange={e => setEditingCell(prev => prev ? { ...prev, value: e.target.value } : null)}
+                  onBlur={commitEdit}
+                  onKeyDown={e => {
+                    e.stopPropagation()
+                    if (e.key === 'Enter') commitEdit()
+                    if (e.key === 'Escape') setEditingCell(null)
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    flex: 1, minWidth: 0, fontSize: '11px',
+                    border: '1px solid #3b82f6', borderRadius: 3,
+                    padding: '1px 4px', outline: 'none', background: 'white',
+                  }}
+                />
+              ) : editingName ? (
+                /* 名前編集モード */
                 <input
                   type="text"
                   autoFocus
@@ -318,6 +346,7 @@ export function GanttTaskList({
                   }}
                 />
               ) : (
+                /* 通常表示 */
                 <span
                   title={`クリックで編集: ${task.name}`}
                   onClick={e => { e.stopPropagation(); startEdit(task.id, 'name', task.name) }}
@@ -326,12 +355,48 @@ export function GanttTaskList({
                     fontWeight: isProject ? 600 : 400,
                     color: isSelected ? '#1d4ed8' : isProject ? '#374151' : '#4b5563',
                     borderBottom: '1px dashed transparent', cursor: 'text',
+                    flex: 1, minWidth: 0,
                   }}
                   onMouseEnter={e => (e.currentTarget.style.borderBottomColor = '#93c5fd')}
                   onMouseLeave={e => (e.currentTarget.style.borderBottomColor = 'transparent')}
                 >
                   {task.name}
                 </span>
+              )}
+
+              {/* URL ボタン */}
+              {!editingName && !editingUrl && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (hasUrl) {
+                      window.open(storeTask!.url, '_blank', 'noopener,noreferrer')
+                    } else {
+                      startEdit(task.id, 'url', '')
+                    }
+                  }}
+                  onContextMenu={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    startEdit(task.id, 'url', storeTask?.url ?? '')
+                  }}
+                  title={hasUrl
+                    ? `${storeTask!.url}\n（右クリックでURL編集）`
+                    : 'URLを設定'}
+                  style={{
+                    flexShrink: 0, background: 'none', border: 'none',
+                    cursor: 'pointer', padding: '0 2px', lineHeight: 1,
+                    fontSize: 12,
+                    color: hasUrl ? '#3b82f6' : '#d1d5db',
+                    opacity: hasUrl ? 1 : 0,
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
+                  onMouseLeave={e => {
+                    if (!hasUrl) (e.currentTarget as HTMLButtonElement).style.opacity = '0'
+                  }}
+                >
+                  🔗
+                </button>
               )}
             </div>
 
