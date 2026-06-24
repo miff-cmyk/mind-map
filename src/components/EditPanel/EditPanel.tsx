@@ -35,6 +35,18 @@ export default function EditPanel() {
       </div>
 
       <div className="p-4 flex flex-col gap-4 flex-1">
+        {/* 担当者 */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">担当者</label>
+          <input
+            type="text"
+            placeholder="担当者名を入力..."
+            value={task.assignee ?? ''}
+            onChange={e => updateTask(task.id, { assignee: e.target.value || undefined })}
+            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+
         {/* カテゴリ */}
         <div>
           <label className="block text-xs text-gray-500 mb-1">カテゴリ</label>
@@ -111,6 +123,18 @@ export default function EditPanel() {
               />
             ))}
           </div>
+        </div>
+
+        {/* コメント */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">コメント</label>
+          <textarea
+            rows={4}
+            placeholder="メモや詳細を入力..."
+            value={task.comment ?? ''}
+            onChange={e => updateTask(task.id, { comment: e.target.value || undefined })}
+            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+          />
         </div>
 
         {/* URL */}

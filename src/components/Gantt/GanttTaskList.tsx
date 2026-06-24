@@ -4,6 +4,7 @@ import { useTaskStore } from '../../store/taskStore'
 
 // ─── 列幅の定義 ───────────────────────────────────────────────
 export const DRAG_HANDLE_WIDTH   = 20
+export const ASSIGNEE_COL_WIDTH  = 64
 export const CATEGORY_COL_WIDTH  = 72
 export const DATE_COL_WIDTH      = 55
 export const DATE_COL_EDIT_WIDTH = 130
@@ -31,7 +32,7 @@ function toInputDate(d: Date): string {
 // ─── 型定義 ───────────────────────────────────────────────────
 interface EditingCell {
   taskId: string
-  field: 'name' | 'start' | 'end' | 'category' | 'url'
+  field: 'name' | 'start' | 'end' | 'assignee' | 'category' | 'url'
   value: string
 }
 
@@ -68,6 +69,9 @@ export function GanttTaskListHeader({ headerHeight, rowWidth, fontFamily, fontSi
       boxSizing: 'border-box',
     }}>
       <div style={{ width: DRAG_HANDLE_WIDTH, flexShrink: 0 }} />
+      <div style={{ ...cell, width: ASSIGNEE_COL_WIDTH, justifyContent: 'flex-start', paddingLeft: 4 }}>
+        担当者
+      </div>
       <div style={{ ...cell, width: CATEGORY_COL_WIDTH, justifyContent: 'flex-start', paddingLeft: 4 }}>
         カテゴリ
       </div>
@@ -149,6 +153,8 @@ export function GanttTaskList({
     const { taskId, field, value } = editingCell
     if (field === 'name' && value.trim()) {
       updateTask(taskId, { name: value.trim() })
+    } else if (field === 'assignee') {
+      updateTask(taskId, { assignee: value.trim() || undefined })
     } else if (field === 'category') {
       updateTask(taskId, { category: value.trim() || undefined })
     } else if (field === 'url') {
@@ -254,6 +260,60 @@ export function GanttTaskList({
             >
               ⠿
             </div>
+
+            {/* ── 担当者列 ── */}
+            {(() => {
+              const editingAssignee = isEditing(task.id, 'assignee')
+              return (
+                <div
+                  style={{
+                    width: editingAssignee ? Math.max(ASSIGNEE_COL_WIDTH, 110) : ASSIGNEE_COL_WIDTH,
+                    flexShrink: 0, display: 'flex', alignItems: 'center',
+                    borderLeft: '1px solid #f3f4f6',
+                    position: 'relative', zIndex: editingAssignee ? 10 : undefined,
+                    overflow: 'visible',
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {editingAssignee ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingCell!.value}
+                      onChange={e => setEditingCell(prev => prev ? { ...prev, value: e.target.value } : null)}
+                      onBlur={commitEdit}
+                      onKeyDown={e => {
+                        e.stopPropagation()
+                        if (e.key === 'Enter') commitEdit()
+                        if (e.key === 'Escape') setEditingCell(null)
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        width: '100%', fontSize: '11px',
+                        border: '1px solid #3b82f6', borderRadius: 3,
+                        padding: '1px 4px', outline: 'none', background: 'white',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      title="クリックで編集"
+                      onClick={() => startEdit(task.id, 'assignee', storeTask?.assignee ?? '')}
+                      style={{
+                        display: 'block', width: '100%',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontSize: '11px', padding: '0 4px',
+                        color: storeTask?.assignee ? '#374151' : '#d1d5db',
+                        cursor: 'text', borderBottom: '1px dashed transparent',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.borderBottomColor = '#93c5fd')}
+                      onMouseLeave={e => (e.currentTarget.style.borderBottomColor = 'transparent')}
+                    >
+                      {storeTask?.assignee || '—'}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* ── カテゴリ列 ── */}
             <div
