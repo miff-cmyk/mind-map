@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb'
+import { v4 as uuidv4 } from 'uuid'
 import type { Task, AppData } from '../types/task'
 import type { IStorage } from './IStorage'
 
@@ -84,20 +85,45 @@ export const IndexedDBStorage: IStorage = {
     const iId = idx('id'), iParent = idx('parentId'), iName = idx('name')
     const iStart = idx('start'), iEnd = idx('end'), iProgress = idx('progress')
     const iColor = idx('color'), iOrder = idx('order')
-    const iUrl = header.indexOf('url')   // url 列は省略可
+    const iUrl = header.indexOf('url')
 
-    return rows.slice(1).filter(r => r.some(f => f !== '')).map(r => ({
-      id:       r[iId],
-      parentId: r[iParent] || null,
-      name:     r[iName],
-      start:    r[iStart],
-      end:      r[iEnd],
-      progress: Math.max(0, Math.min(100, Number(r[iProgress]) || 0)),
-      color:    r[iColor] || 'blue',
-      order:    Number(r[iOrder]) || 0,
-      url:      (iUrl >= 0 && r[iUrl]) ? r[iUrl] : undefined,
-    }))
+    const dataRows = rows.slice(1).filter(r => r.some(f => f !== ''))
+
+    // id が空 or 重複しうる値でも安全に扱えるよう、全行に新 UUID を振り
+    // 元の id → 新 UUID のマップで parentId 参照を解決する
+    const idMap = new Map<string, string>()
+    dataRows.forEach(r => {
+      const orig = r[iId]?.trim()
+      const newId = uuidv4()
+      if (orig) idMap.set(orig, newId)
+      r[iId] = newId   // 行を直接書き換えておく
+    })
+
+    return dataRows.map(r => {
+      const origParent = r[iParent]?.trim()
+      return {
+        id:       r[iId],
+        parentId: origParent ? (idMap.get(origParent) ?? null) : null,
+        name:     r[iName] || '新しいタスク',
+        start:    normalizeDate(r[iStart]),
+        end:      normalizeDate(r[iEnd]),
+        progress: Math.max(0, Math.min(100, Number(r[iProgress]) || 0)),
+        color:    r[iColor] || 'blue',
+        order:    Number(r[iOrder]) || 0,
+        url:      (iUrl >= 0 && r[iUrl]) ? r[iUrl] : undefined,
+      }
+    })
   },
+}
+
+/** yyyy/m/d や yyyy-m-d など各種形式を yyyy-mm-dd に統一 */
+function normalizeDate(s: string): string {
+  const parts = s.trim().split(/[-/]/).map(Number)
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    throw new Error(`日付の形式が無効です: "${s}"（例: 2026-06-27 または 2026/6/27）`)
+  }
+  const [y, m, d] = parts
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
 function csvEscape(value: string): string {
