@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Task as GanttTask } from 'gantt-task-react'
 import { useTaskStore } from '../../store/taskStore'
 
@@ -38,6 +38,12 @@ interface EditingCell {
 interface DropInfo {
   targetId: string
   position: 'above' | 'below'
+}
+
+interface CommentPopup {
+  taskId: string
+  x: number
+  y: number
 }
 
 // ─── ヘッダー ─────────────────────────────────────────────────
@@ -98,9 +104,24 @@ export function GanttTaskList({
   const ganttCollapsedIds   = useTaskStore(s => s.ganttCollapsedIds)
   const toggleGanttCollapse = useTaskStore(s => s.toggleGanttCollapse)
 
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
-  const [dragId,   setDragId]   = useState<string | null>(null)
-  const [dropInfo, setDropInfo] = useState<DropInfo | null>(null)
+  const [editingCell,   setEditingCell]   = useState<EditingCell | null>(null)
+  const [dragId,        setDragId]        = useState<string | null>(null)
+  const [dropInfo,      setDropInfo]      = useState<DropInfo | null>(null)
+  const [hoveredId,     setHoveredId]     = useState<string | null>(null)
+  const [commentPopup,  setCommentPopup]  = useState<CommentPopup | null>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+
+  // ポップアップ外クリックで閉じる
+  useEffect(() => {
+    if (!commentPopup) return
+    const handler = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setCommentPopup(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [commentPopup])
 
   const lastSiblingIds = useMemo(() => {
     const result = new Set<string>()
@@ -161,6 +182,9 @@ export function GanttTaskList({
         const editingCategory = isEditing(task.id, 'category')
         const editingUrl      = isEditing(task.id, 'url')
         const hasUrl          = !!(storeTask?.url)
+        const hasComment      = !!(storeTask?.comment)
+        const isHovered       = hoveredId === task.id
+        const showButtons     = isHovered || hasUrl || hasComment
 
         const isDragging   = dragId === task.id
         const isDropTarget = dropInfo?.targetId === task.id
@@ -203,6 +227,8 @@ export function GanttTaskList({
               setDropInfo(null)
             }}
             onDragEnd={() => { setDragId(null); setDropInfo(null) }}
+            onMouseEnter={() => setHoveredId(task.id)}
+            onMouseLeave={() => setHoveredId(null)}
             onClick={() => setSelectedTask(task.id)}
             style={{
               height: rowHeight,
@@ -364,39 +390,52 @@ export function GanttTaskList({
                 </span>
               )}
 
-              {/* URL ボタン */}
-              {!editingName && !editingUrl && (
-                <button
-                  onClick={e => {
-                    e.stopPropagation()
-                    if (hasUrl) {
-                      window.open(storeTask!.url, '_blank', 'noopener,noreferrer')
-                    } else {
-                      startEdit(task.id, 'url', '')
-                    }
-                  }}
-                  onContextMenu={e => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    startEdit(task.id, 'url', storeTask?.url ?? '')
-                  }}
-                  title={hasUrl
-                    ? `${storeTask!.url}\n（右クリックでURL編集）`
-                    : 'URLを設定'}
-                  style={{
-                    flexShrink: 0, background: 'none', border: 'none',
-                    cursor: 'pointer', padding: '0 2px', lineHeight: 1,
-                    fontSize: 12,
-                    color: hasUrl ? '#3b82f6' : '#d1d5db',
-                    opacity: hasUrl ? 1 : 0,
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
-                  onMouseLeave={e => {
-                    if (!hasUrl) (e.currentTarget as HTMLButtonElement).style.opacity = '0'
-                  }}
-                >
-                  🔗
-                </button>
+              {/* URL ボタン・コメントボタン */}
+              {!editingName && !editingUrl && showButtons && (
+                <span style={{ display: 'flex', flexShrink: 0, gap: 1 }}>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (hasUrl) {
+                        window.open(storeTask!.url, '_blank', 'noopener,noreferrer')
+                      } else {
+                        startEdit(task.id, 'url', '')
+                      }
+                    }}
+                    onContextMenu={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      startEdit(task.id, 'url', storeTask?.url ?? '')
+                    }}
+                    title={hasUrl ? `${storeTask!.url}\n（右クリックでURL編集）` : 'URLを設定'}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      padding: '0 2px', lineHeight: 1, fontSize: 12,
+                      color: hasUrl ? '#3b82f6' : '#9ca3af',
+                    }}
+                  >
+                    🔗
+                  </button>
+
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setCommentPopup(prev =>
+                        prev?.taskId === task.id ? null
+                          : { taskId: task.id, x: rect.left, y: rect.bottom + 6 }
+                      )
+                    }}
+                    title={hasComment ? 'コメントを見る' : 'コメントを追加'}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      padding: '0 2px', lineHeight: 1, fontSize: 12,
+                      color: hasComment ? '#f59e0b' : '#9ca3af',
+                    }}
+                  >
+                    💬
+                  </button>
+                </span>
               )}
             </div>
 
@@ -483,6 +522,72 @@ export function GanttTaskList({
           </div>
         )
       })}
+
+      {/* ── コメントポップアップ ── */}
+      {commentPopup && (() => {
+        const popupTask = storeTasks.find(t => t.id === commentPopup.taskId)
+        if (!popupTask) return null
+        return (
+          <div
+            ref={popupRef}
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: commentPopup.y,
+              left: Math.min(commentPopup.x, window.innerWidth - 280),
+              width: 264,
+              background: 'white',
+              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+              zIndex: 9999,
+              padding: 12,
+              fontSize: 12,
+              color: '#374151',
+            }}
+          >
+            {/* ヘッダー */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{popupTask.name}</div>
+                {popupTask.category && (
+                  <div style={{ color: '#6b7280', fontSize: 11 }}>{popupTask.category}</div>
+                )}
+              </div>
+              <button
+                onClick={() => setCommentPopup(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+              >×</button>
+            </div>
+
+            {/* タスク詳細 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 8px', marginBottom: 8, color: '#6b7280' }}>
+              <span>開始</span><span>{popupTask.start}</span>
+              <span>終了</span><span>{popupTask.end}</span>
+              <span>進捗</span><span>{popupTask.progress}%</span>
+            </div>
+
+            {/* コメント textarea */}
+            <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 8 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>コメント</div>
+              <textarea
+                rows={4}
+                placeholder="メモや詳細を入力..."
+                defaultValue={popupTask.comment ?? ''}
+                onBlur={e => updateTask(popupTask.id, { comment: e.target.value.trim() || undefined })}
+                style={{
+                  width: '100%', resize: 'none', fontSize: 12,
+                  border: '1px solid #e5e7eb', borderRadius: 4,
+                  padding: '4px 6px', outline: 'none', boxSizing: 'border-box',
+                  fontFamily: 'inherit', color: '#374151', lineHeight: 1.5,
+                }}
+                onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
+                onBlurCapture={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
