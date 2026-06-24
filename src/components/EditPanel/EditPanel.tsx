@@ -35,6 +35,18 @@ export default function EditPanel() {
       </div>
 
       <div className="p-4 flex flex-col gap-4 flex-1">
+        {/* カテゴリ */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">カテゴリ</label>
+          <input
+            type="text"
+            placeholder="カテゴリを入力..."
+            value={task.category ?? ''}
+            onChange={e => updateTask(task.id, { category: e.target.value || undefined })}
+            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+
         {/* タスク名 */}
         <div>
           <label className="block text-xs text-gray-500 mb-1">タスク名</label>

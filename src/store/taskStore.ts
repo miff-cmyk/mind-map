@@ -39,6 +39,7 @@ interface TaskStore {
   importData(json: string): void
   exportCSV(): void
   importCSV(csv: string): void
+  reorderTask(dragId: string, targetId: string, position: 'above' | 'below'): void
   toggleCollapse(id: string): void
   toggleGanttCollapse(id: string): void
 }
@@ -124,6 +125,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     } catch (e) {
       alert(e instanceof Error ? e.message : 'CSVインポートに失敗しました')
     }
+  },
+
+  reorderTask(dragId, targetId, position) {
+    const { tasks } = get()
+    const dragTask   = tasks.find(t => t.id === dragId)
+    const targetTask = tasks.find(t => t.id === targetId)
+    if (!dragTask || !targetTask || dragTask.parentId !== targetTask.parentId) return
+
+    const siblings = tasks
+      .filter(t => t.parentId === dragTask.parentId)
+      .sort((a, b) => a.order - b.order)
+
+    const without = siblings.filter(t => t.id !== dragId)
+    const ti  = without.findIndex(t => t.id === targetId)
+    const ins = position === 'above' ? ti : ti + 1
+    without.splice(ins, 0, dragTask)
+
+    const orderMap = new Map(without.map((t, i) => [t.id, i]))
+    const updated  = tasks.map(t =>
+      orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t
+    )
+    set({ tasks: updated })
+    IndexedDBStorage.save(updated)
   },
 
   toggleCollapse(id) {

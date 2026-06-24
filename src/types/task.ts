@@ -2,6 +2,7 @@ export interface Task {
   id: string
   parentId: string | null
   name: string
+  category?: string
   start: string   // "YYYY-MM-DD"
   end: string     // "YYYY-MM-DD"
   progress: number // 0〜100

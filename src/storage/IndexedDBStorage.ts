@@ -56,9 +56,9 @@ export const IndexedDBStorage: IStorage = {
   },
 
   exportCSV(tasks: Task[]): void {
-    const header = 'id,parentId,name,start,end,progress,color,order,url'
+    const header = 'id,parentId,category,name,start,end,progress,color,order,url'
     const rows = tasks.map(t =>
-      [t.id, t.parentId ?? '', t.name, t.start, t.end,
+      [t.id, t.parentId ?? '', t.category ?? '', t.name, t.start, t.end,
        String(t.progress), t.color, String(t.order), t.url ?? '']
         .map(csvEscape).join(',')
     )
@@ -85,7 +85,8 @@ export const IndexedDBStorage: IStorage = {
     const iId = idx('id'), iParent = idx('parentId'), iName = idx('name')
     const iStart = idx('start'), iEnd = idx('end'), iProgress = idx('progress')
     const iColor = idx('color'), iOrder = idx('order')
-    const iUrl = header.indexOf('url')
+    const iUrl      = header.indexOf('url')       // 省略可
+    const iCategory = header.indexOf('category')  // 省略可
 
     const dataRows = rows.slice(1).filter(r => r.some(f => f !== ''))
 
@@ -105,6 +106,7 @@ export const IndexedDBStorage: IStorage = {
         id:       r[iId],
         parentId: origParent ? (idMap.get(origParent) ?? null) : null,
         name:     r[iName] || '新しいタスク',
+        category: (iCategory >= 0 && r[iCategory]) ? r[iCategory] : undefined,
         start:    normalizeDate(r[iStart]),
         end:      normalizeDate(r[iEnd]),
         progress: Math.max(0, Math.min(100, Number(r[iProgress]) || 0)),
