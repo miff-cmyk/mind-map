@@ -176,7 +176,7 @@ export function GanttTaskList({
         const storeTask   = storeTasks.find(t => t.id === task.id)
         const depth       = getDepth(task.id, tasks)
         const isLast      = lastSiblingIds.has(task.id)
-        const isProject   = tasks.some(t => t.project === task.id)
+        const isProject   = storeTasks.some(t => t.parentId === task.id)
         const isSelected  = task.id === selectedTaskId
         const isCollapsed = ganttCollapsedIds.includes(task.id)
         const connector   = depth === 0 ? null : isLast ? '└' : '├'
