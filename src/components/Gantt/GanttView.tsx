@@ -56,7 +56,6 @@ function toGanttTask(task: Task): GanttTask {
     progress: task.progress,
     type: 'task',
     project: task.parentId ?? undefined,
-    displayOrder: task.order,
     styles: {
       backgroundColor: hex,
       backgroundSelectedColor: hex + 'cc',
@@ -139,7 +138,9 @@ export default function GanttView() {
   const visibleGanttTasks = useMemo(() => {
     const sorted     = dfsSorted(tasks)
     const ganttTasks = sorted.map(t => toGanttTask(t))
-    return filterByCollapsed(ganttTasks, ganttCollapsedIds)
+    const filtered   = filterByCollapsed(ganttTasks, ganttCollapsedIds)
+    // displayOrder=0 はライブラリが Number.MAX_VALUE 扱いするため 1 始まりで連番を振る
+    return filtered.map((t, i) => ({ ...t, displayOrder: i + 1 }))
   }, [tasks, ganttCollapsedIds])
 
   // ── DOM 注入: 土日色 + カレンダーヘッダー 2 行化 (日ビューのみ) ────
