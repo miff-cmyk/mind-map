@@ -32,7 +32,7 @@ interface TaskStore {
 
   loadFromStorage(): Promise<void>
   selectTask(id: string | null): void
-  addTask(parentId: string | null): void
+  addTask(parentId: string | null, afterId?: string): void
   updateTask(id: string, updates: Partial<Omit<Task, 'id'>>): void
   deleteTask(id: string): void
   exportData(): void
@@ -60,8 +60,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set({ selectedTaskId: id })
   },
 
-  addTask(parentId) {
+  addTask(parentId, afterId?) {
     const { tasks, collapsedIds } = get()
+
+    // afterId が指定された場合、そのタスクの直後に挿入する
+    let newOrder: number
+    let baseTasks = tasks
+    if (afterId) {
+      const afterTask = tasks.find(t => t.id === afterId)
+      if (afterTask) {
+        // afterTask より後ろの兄弟を +1 ずらして空きを作る
+        baseTasks = tasks.map(t =>
+          t.parentId === parentId && t.order > afterTask.order
+            ? { ...t, order: t.order + 1 }
+            : t
+        )
+        newOrder = afterTask.order + 1
+      } else {
+        newOrder = nextOrder(tasks, parentId)
+      }
+    } else {
+      newOrder = nextOrder(tasks, parentId)
+    }
+
     const newTask: Task = {
       id: uuidv4(),
       parentId,
@@ -70,9 +91,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       end: twoWeeksLater(),
       progress: 0,
       color: 'blue',
-      order: nextOrder(tasks, parentId),
+      order: newOrder,
     }
-    const updated = [...tasks, newTask]
+    const updated = [...baseTasks, newTask]
     // 親が折りたたまれていれば自動展開する
     const newCollapsedIds = parentId
       ? collapsedIds.filter(id => id !== parentId)

@@ -38,7 +38,7 @@ export default function App() {
 
       if (e.key === 'Enter') {
         e.preventDefault()
-        addTask(selectedTask.parentId)
+        addTask(selectedTask.parentId, selectedTaskId)
       } else if (e.key === 'Tab') {
         e.preventDefault()
         addTask(selectedTaskId)
