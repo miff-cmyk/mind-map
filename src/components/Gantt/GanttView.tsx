@@ -23,23 +23,22 @@ function getProgressColor(progress: number): string {
   return '#ef4444'
 }
 
-function bfsSorted(tasks: Task[]): Task[] {
+function dfsSorted(tasks: Task[]): Task[] {
   const childrenMap = new Map<string | null, Task[]>()
   tasks.forEach(t => {
-    const siblings = childrenMap.get(t.parentId) ?? []
-    siblings.push(t)
-    childrenMap.set(t.parentId, siblings)
+    const arr = childrenMap.get(t.parentId) ?? []
+    arr.push(t)
+    childrenMap.set(t.parentId, arr)
   })
   const result: Task[] = []
-  const queue: Array<string | null> = [null]
-  while (queue.length > 0) {
-    const parentId = queue.shift()!
+  function visit(parentId: string | null) {
     const children = (childrenMap.get(parentId) ?? []).sort((a, b) => a.order - b.order)
-    children.forEach(c => {
-      result.push(c)
-      queue.push(c.id)
-    })
+    for (const child of children) {
+      result.push(child)
+      visit(child.id)
+    }
   }
+  visit(null)
   return result
 }
 
@@ -138,7 +137,7 @@ export default function GanttView() {
   const headerH   = viewMode === ViewMode.Day ? HEADER_DAY : HEADER_DEFAULT
 
   const visibleGanttTasks = useMemo(() => {
-    const sorted     = bfsSorted(tasks)
+    const sorted     = dfsSorted(tasks)
     const ganttTasks = sorted.map(t => toGanttTask(t))
     return filterByCollapsed(ganttTasks, ganttCollapsedIds)
   }, [tasks, ganttCollapsedIds])
