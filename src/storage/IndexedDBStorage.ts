@@ -56,9 +56,9 @@ export const IndexedDBStorage: IStorage = {
   },
 
   exportCSV(tasks: Task[]): void {
-    const header = 'id,parentId,assignee,category,name,start,end,progress,color,order,url,comment'
+    const header = 'id,parentId,assignee,category,priority,name,start,end,progress,color,order,url,comment'
     const rows = tasks.map(t =>
-      [t.id, t.parentId ?? '', t.assignee ?? '', t.category ?? '', t.name, t.start, t.end,
+      [t.id, t.parentId ?? '', t.assignee ?? '', t.category ?? '', t.priority ?? '', t.name, t.start, t.end,
        String(t.progress), t.color, String(t.order), t.url ?? '', t.comment ?? '']
         .map(csvEscape).join(',')
     )
@@ -88,7 +88,8 @@ export const IndexedDBStorage: IStorage = {
     const iUrl      = header.indexOf('url')       // 省略可
     const iCategory = header.indexOf('category')  // 省略可
     const iComment  = header.indexOf('comment')   // 省略可
-    const iAssignee = header.indexOf('assignee')  // 省略可
+    const iAssignee  = header.indexOf('assignee')  // 省略可
+    const iPriority  = header.indexOf('priority')  // 省略可
 
     const dataRows = rows.slice(1).filter(r => r.some(f => f !== ''))
 
@@ -114,7 +115,8 @@ export const IndexedDBStorage: IStorage = {
         progress: Math.max(0, Math.min(100, Number(r[iProgress]) || 0)),
         color:    r[iColor] || 'blue',
         order:    Number(r[iOrder]) || 0,
-        assignee: (iAssignee >= 0 && r[iAssignee]) ? r[iAssignee] : undefined,
+        assignee:  (iAssignee >= 0 && r[iAssignee]) ? r[iAssignee] : undefined,
+        priority:  (iPriority >= 0 && ['high','medium','low'].includes(r[iPriority])) ? r[iPriority] as 'high'|'medium'|'low' : undefined,
         url:      (iUrl >= 0 && r[iUrl]) ? r[iUrl] : undefined,
         comment:  (iComment >= 0 && r[iComment]) ? r[iComment] : undefined,
       }

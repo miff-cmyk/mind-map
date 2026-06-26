@@ -15,13 +15,6 @@ const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
 
 // ─── ユーティリティ ───────────────────────────────────────────────────
 
-/** 進捗率に応じたバーの色 */
-function getProgressColor(progress: number): string {
-  if (progress === 100) return '#22c55e'
-  if (progress >= 70)   return '#3b82f6'
-  if (progress >= 30)   return '#f59e0b'
-  return '#ef4444'
-}
 
 function dfsSorted(tasks: Task[]): Task[] {
   const childrenMap = new Map<string | null, Task[]>()
@@ -57,10 +50,10 @@ function toGanttTask(task: Task): GanttTask {
     type: 'task',
     project: task.parentId ?? undefined,
     styles: {
-      backgroundColor: hex,
-      backgroundSelectedColor: hex + 'cc',
-      progressColor: getProgressColor(task.progress),
-      progressSelectedColor: getProgressColor(task.progress) + 'cc',
+      backgroundColor: hex + '33',        // 20%透明度 → 進捗0は薄く表示
+      backgroundSelectedColor: hex + '55',
+      progressColor: hex,                  // タスクカラーで塗りつぶされる
+      progressSelectedColor: hex + 'cc',
     },
   }
 }

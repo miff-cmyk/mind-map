@@ -1,9 +1,12 @@
+export type Priority = 'high' | 'medium' | 'low'
+
 export interface Task {
   id: string
   parentId: string | null
   name: string
   assignee?: string
   category?: string
+  priority?: Priority
   start: string   // "YYYY-MM-DD"
   end: string     // "YYYY-MM-DD"
   progress: number // 0〜100

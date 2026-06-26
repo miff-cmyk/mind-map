@@ -35,6 +35,21 @@ export default function EditPanel() {
       </div>
 
       <div className="p-4 flex flex-col gap-4 flex-1">
+        {/* 優先度 */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">優先度</label>
+          <select
+            value={task.priority ?? ''}
+            onChange={e => updateTask(task.id, { priority: (e.target.value as 'high'|'medium'|'low') || undefined })}
+            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          >
+            <option value="">未設定</option>
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
+          </select>
+        </div>
+
         {/* 担当者 */}
         <div>
           <label className="block text-xs text-gray-500 mb-1">担当者</label>

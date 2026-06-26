@@ -107,6 +107,8 @@ export function GanttTaskList({
   const reorderTask         = useTaskStore(s => s.reorderTask)
   const ganttCollapsedIds   = useTaskStore(s => s.ganttCollapsedIds)
   const toggleGanttCollapse = useTaskStore(s => s.toggleGanttCollapse)
+  const pendingEditId       = useTaskStore(s => s.pendingEditId)
+  const clearPendingEdit    = useTaskStore(s => s.clearPendingEdit)
 
   const [editingCell,   setEditingCell]   = useState<EditingCell | null>(null)
   const [dragId,        setDragId]        = useState<string | null>(null)
@@ -114,6 +116,39 @@ export function GanttTaskList({
   const [hoveredId,     setHoveredId]     = useState<string | null>(null)
   const [commentPopup,  setCommentPopup]  = useState<CommentPopup | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
+
+  // 新規タスク追加直後にタスク名を自動編集開始
+  useEffect(() => {
+    if (!pendingEditId) return
+    const st = storeTasks.find(t => t.id === pendingEditId)
+    const inList = tasks.some(t => t.id === pendingEditId)
+    if (st && inList) {
+      setSelectedTask(pendingEditId)
+      setEditingCell({ taskId: pendingEditId, field: 'name', value: st.name })
+      clearPendingEdit()
+    }
+  }, [pendingEditId, tasks])
+
+  // セル間タブ移動（担当者 → カテゴリ → タスク名 → 担当者）
+  const tabNavigate = (
+    e: React.KeyboardEvent,
+    currentField: 'assignee' | 'category' | 'name',
+    taskId: string,
+  ) => {
+    if (e.key !== 'Tab') return
+    e.preventDefault()
+    e.stopPropagation()
+    const val = editingCell?.value ?? ''
+    if (currentField === 'name' && val.trim()) updateTask(taskId, { name: val.trim() })
+    else if (currentField === 'assignee') updateTask(taskId, { assignee: val.trim() || undefined })
+    else if (currentField === 'category') updateTask(taskId, { category: val.trim() || undefined })
+    const ORDER = ['assignee', 'category', 'name'] as const
+    const idx = ORDER.indexOf(currentField)
+    const nextField = ORDER[e.shiftKey ? (idx - 1 + 3) % 3 : (idx + 1) % 3]
+    const st = storeTasks.find(t => t.id === taskId)
+    const nextValue = nextField === 'name' ? (st?.name ?? '') : (st?.[nextField] ?? '') as string
+    setEditingCell({ taskId, field: nextField, value: nextValue })
+  }
 
   // ポップアップ外クリックで閉じる
   useEffect(() => {
@@ -283,7 +318,7 @@ export function GanttTaskList({
                       onChange={e => setEditingCell(prev => prev ? { ...prev, value: e.target.value } : null)}
                       onBlur={commitEdit}
                       onKeyDown={e => {
-                        e.stopPropagation()
+                        tabNavigate(e, 'assignee', task.id)
                         if (e.key === 'Enter') commitEdit()
                         if (e.key === 'Escape') setEditingCell(null)
                       }}
@@ -334,7 +369,7 @@ export function GanttTaskList({
                   onChange={e => setEditingCell(prev => prev ? { ...prev, value: e.target.value } : null)}
                   onBlur={commitEdit}
                   onKeyDown={e => {
-                    e.stopPropagation()
+                    tabNavigate(e, 'category', task.id)
                     if (e.key === 'Enter') commitEdit()
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
@@ -420,7 +455,7 @@ export function GanttTaskList({
                   onChange={e => setEditingCell(prev => prev ? { ...prev, value: e.target.value } : null)}
                   onBlur={commitEdit}
                   onKeyDown={e => {
-                    e.stopPropagation()
+                    tabNavigate(e, 'name', task.id)
                     if (e.key === 'Enter') commitEdit()
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
@@ -433,21 +468,31 @@ export function GanttTaskList({
                 />
               ) : (
                 /* 通常表示 */
-                <span
-                  title={`クリックで編集: ${task.name}`}
-                  onClick={e => { e.stopPropagation(); startEdit(task.id, 'name', task.name) }}
-                  style={{
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    fontWeight: isProject ? 600 : 400,
-                    color: isSelected ? '#1d4ed8' : isProject ? '#374151' : '#4b5563',
-                    borderBottom: '1px dashed transparent', cursor: 'text',
-                    flex: 1, minWidth: 0,
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.borderBottomColor = '#93c5fd')}
-                  onMouseLeave={e => (e.currentTarget.style.borderBottomColor = 'transparent')}
-                >
-                  {task.name}
-                </span>
+                <>
+                  {storeTask?.priority && (
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0, marginRight: 3,
+                      backgroundColor: storeTask.priority === 'high' ? '#ef4444'
+                        : storeTask.priority === 'medium' ? '#f59e0b' : '#22c55e',
+                      display: 'inline-block',
+                    }} title={`優先度: ${storeTask.priority === 'high' ? '高' : storeTask.priority === 'medium' ? '中' : '低'}`} />
+                  )}
+                  <span
+                    title={`クリックで編集: ${task.name}`}
+                    onClick={e => { e.stopPropagation(); startEdit(task.id, 'name', task.name) }}
+                    style={{
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontWeight: isProject ? 600 : 400,
+                      color: isSelected ? '#1d4ed8' : isProject ? '#374151' : '#4b5563',
+                      borderBottom: '1px dashed transparent', cursor: 'text',
+                      flex: 1, minWidth: 0,
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.borderBottomColor = '#93c5fd')}
+                    onMouseLeave={e => (e.currentTarget.style.borderBottomColor = 'transparent')}
+                  >
+                    {task.name}
+                  </span>
+                </>
               )}
 
               {/* URL ボタン・コメントボタン */}
@@ -574,7 +619,8 @@ export function GanttTaskList({
                 type="number" min={0} max={100}
                 value={task.progress}
                 onChange={e => updateTask(task.id, { progress: Math.max(0, Math.min(100, Number(e.target.value))) })}
-                onClick={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); (e.target as HTMLInputElement).select() }}
+                onKeyDown={e => e.stopPropagation()}
                 style={{ width: 40, textAlign: 'right', border: '1px solid #d1d5db', borderRadius: 4, padding: '1px 3px', fontSize: '11px', outline: 'none', background: 'white' }}
               />
               <span style={{ fontSize: '11px', color: '#9ca3af', flexShrink: 0 }}>%</span>

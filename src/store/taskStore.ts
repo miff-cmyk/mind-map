@@ -29,10 +29,12 @@ interface TaskStore {
   isLoaded: boolean
   collapsedIds: string[]        // マインドマップの折りたたみ（IndexedDBには保存しない）
   ganttCollapsedIds: string[]   // ガントチャートの折りたたみ（IndexedDBには保存しない）
+  pendingEditId: string | null  // 追加直後にタスク名編集を開始するシグナル
 
   loadFromStorage(): Promise<void>
   selectTask(id: string | null): void
   addTask(parentId: string | null, afterId?: string): void
+  clearPendingEdit(): void
   updateTask(id: string, updates: Partial<Omit<Task, 'id'>>): void
   deleteTask(id: string): void
   exportData(): void
@@ -50,6 +52,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   isLoaded: false,
   collapsedIds: [],
   ganttCollapsedIds: [],
+  pendingEditId: null,
 
   async loadFromStorage() {
     const tasks = await IndexedDBStorage.load()
@@ -98,8 +101,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const newCollapsedIds = parentId
       ? collapsedIds.filter(id => id !== parentId)
       : collapsedIds
-    set({ tasks: updated, selectedTaskId: newTask.id, collapsedIds: newCollapsedIds })
+    set({ tasks: updated, selectedTaskId: newTask.id, pendingEditId: newTask.id, collapsedIds: newCollapsedIds })
     IndexedDBStorage.save(updated)
+  },
+
+  clearPendingEdit() {
+    set({ pendingEditId: null })
   },
 
   updateTask(id, updates) {
